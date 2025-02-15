@@ -20,7 +20,7 @@ jobs:
         run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Install Package Using setup.py
-        run: python setup.py install --user
+        run: sudo python setup.py install
 
       - name: Verify Installation
         run: ebook-convert --help
