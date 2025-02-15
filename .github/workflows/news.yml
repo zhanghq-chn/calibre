@@ -17,7 +17,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install Calibre
-      - run: sudo -v && wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sudo sh /dev/stdin
+        run: sudo -v && wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sudo sh /dev/stdin
       
       # - name: Install Dependencies
       #   run: python -m pip install --upgrade pip setuptools wheel
