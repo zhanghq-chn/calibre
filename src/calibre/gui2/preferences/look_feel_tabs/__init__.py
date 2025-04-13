@@ -23,6 +23,7 @@ from qt.core import (
     pyqtSignal,
 )
 
+from calibre.db.constants import NO_SEARCH_LINK
 from calibre.ebooks.metadata.book.render import DEFAULT_AUTHOR_LINK
 from calibre.ebooks.metadata.search_internet import qquote
 from calibre.gui2 import choose_files, choose_save_file, error_dialog
@@ -57,6 +58,7 @@ class DefaultAuthorLink(QWidget):
                 (_('Search for the book on Goodreads'), 'search-goodreads-book'),
                 (_('Search for the book on Amazon'), 'search-amzn-book'),
                 (_('Search for the book on Google Books'), 'search-google-book'),
+                (_('No author search URL'), NO_SEARCH_LINK),
                 (_('Use a custom search URL'), 'url'),
         ]:
             c.addItem(text, data)
@@ -229,7 +231,7 @@ class LazyEditRulesBase(LazyConfigWidgetBase):
 
     def lazy_initialize(self):
         if not self.rule_set_name:
-            raise NotImplementedError('You must define the attribut "rule_set_name" in LazyEditRulesBase subclasses')
+            raise NotImplementedError('You must define the attribute "rule_set_name" in LazyEditRulesBase subclasses')
         self.load_rule_set(self.rule_set_name)
 
     def load_rule_set(self, name):

@@ -39,7 +39,7 @@ from qt.core import (
 
 from calibre import fit_image, sanitize_file_name
 from calibre.constants import config_dir, iswindows
-from calibre.db.constants import DATA_DIR_NAME, DATA_FILE_PATTERN, RESOURCE_URL_SCHEME
+from calibre.db.constants import DATA_DIR_NAME, DATA_FILE_PATTERN, NO_SEARCH_LINK, RESOURCE_URL_SCHEME
 from calibre.ebooks import BOOK_EXTENSIONS
 from calibre.ebooks.metadata.book.base import Metadata, field_metadata
 from calibre.ebooks.metadata.book.render import mi_to_html
@@ -84,7 +84,10 @@ def set_html(mi, html, text_browser):
     search_paths = []
     db, _ = db_for_mi(mi)
     if db and book_id is not None:
-        path = db.abspath(book_id, index_is_id=True)
+        try:
+            path = db.abspath(book_id, index_is_id=True)
+        except Exception:  # deleted book
+            path = ''
         if path:
             search_paths = [path]
     text_browser.setSearchPaths(search_paths)
@@ -498,7 +501,7 @@ def add_item_specific_entries(menu, data, book_info, copy_menu, search_menu):
         data['reindex_fmt_added'] = True
     elif dt == 'author':
         author = data['name']
-        if data['url'] != 'calibre':
+        if data['url'] not in ('calibre', NO_SEARCH_LINK):
             ac = book_info.copy_link_action
             ac.current_url = data['url']
             ac.setText(_('&Author link'))
@@ -744,16 +747,16 @@ def details_context_menu_event(view, ev, book_info, add_popup_action=False, edit
 # }}}
 
 
-def create_open_cover_with_menu(self, parent_menu):
+def create_open_cover_with_menu(self, parent_menu, text=''):
     from calibre.gui2.open_with import edit_programs, populate_menu
-    m = QMenu(_('Open cover with...'))
+    m = QMenu(text or _('Open cover with...'))
 
     def connect_action(ac, entry):
         connect_lambda(ac.triggered, self, lambda self: self.open_with(entry))
 
     populate_menu(m, connect_action, 'cover_image')
     if len(m.actions()) == 0:
-        parent_menu.addAction(_('Open cover with...'), self.choose_open_with)
+        parent_menu.addAction(text or _('Open cover with...'), self.choose_open_with)
     else:
         m.addSeparator()
         m.addAction(_('Add another application to open cover with...'), self.choose_open_with)
@@ -1477,6 +1480,8 @@ class BookDetails(DetailsLayout, DropMixin):  # {{{
 
         if typ == 'action':
             data = json_loads(from_hex_bytes(val))
+            if data.get('url') == NO_SEARCH_LINK:
+                return
             dt = data['type']
             if dt == 'search':
                 field = data.get('field')

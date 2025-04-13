@@ -48,7 +48,6 @@ from qt.core import (
     QTimer,
     QToolTip,
     QTreeView,
-    QUrl,
     pyqtProperty,
     pyqtSignal,
     pyqtSlot,
@@ -208,7 +207,7 @@ def drag_data(self):
     md.setData('application/calibre+from_library', ids.encode('utf-8'))
     fmt = prefs['output_format']
 
-    def url_for_id(i):
+    def path_for_id(i):
         try:
             ans = db.format_path(i, fmt, index_is_id=True)
         except:
@@ -226,9 +225,10 @@ def drag_data(self):
                     ans = None
         if ans is None:
             ans = db.abspath(i, index_is_id=True)
-        return QUrl.fromLocalFile(ans)
+        return ans
 
-    md.setUrls([url_for_id(i) for i in selected])
+    from calibre.gui2.dnd import set_urls_from_local_file_paths
+    set_urls_from_local_file_paths(md, *[path_for_id(i) for i in selected])
     drag = QDrag(self)
     col = self.selectionModel().currentIndex().column()
     try:
@@ -646,7 +646,7 @@ class CoverDelegate(QStyledItemDelegate):
                 if self.title_height != 0:
                     self.paint_title(painter, trect, db, book_id)
             if self.emblem_size > 0:
-                # We dont draw embossed emblems as the ondevice/marked emblems are drawn in the gutter
+                # We don't draw embossed emblems as the ondevice/marked emblems are drawn in the gutter
                 return
             if marked:
                 try:
@@ -1163,7 +1163,7 @@ class GridView(QListView):
             self.thumbnail_cache.set_database(newdb)
             try:
                 # Use a timeout so that if, for some reason, the render thread
-                # gets stuck, we dont deadlock, future covers won't get
+                # gets stuck, we don't deadlock, future covers won't get
                 # rendered, but this is better than a deadlock
                 join_with_timeout(self.delegate.render_queue)
             except RuntimeError:
@@ -1395,7 +1395,7 @@ class GridView(QListView):
             # pixelDelta() is broken on linux with wheel mice
             dy = number_of_degrees.y() / 15.0
             # Scroll by approximately half a row
-            dy = int(math.ceil((dy) * b.singleStep() / 2.0))
+            dy = math.ceil((dy) * b.singleStep() / 2.0)
         else:
             dy = number_of_pixels.y()
         if abs(dy) > 0:

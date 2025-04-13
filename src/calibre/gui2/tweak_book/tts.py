@@ -40,7 +40,7 @@ audio overlays, such as the calibre viewer, will be able to hear the text read t
 
 <p style="font-size: small">Note that generating the Text-to-speech audio will be quite slow,
 at the rate of approximately one sentence per couple of seconds, depending on your computer's hardware,
-so consider leave it running overnight.
+so consider leaving it to run overnight.
 ''').format('cory', 'ryan', skip_name))
         self.save_settings = c.save_settings
 
@@ -79,7 +79,7 @@ class Progress(QWidget):
         if (time_elapsed := now - self.stage_start_at) >= 5:
             rate = count / time_elapsed
             time_left = (total - count) / rate
-            self.time_left.setText(_('Time to complete this stage: {1}').format(stage, human_readable_interval(time_left)))
+            self.time_left.setText(_('Time to complete this stage: {}').format(human_readable_interval(time_left)))
         else:
             self.time_left.setText(_('Estimating time left'))
         return self.cancel_requested
@@ -112,7 +112,7 @@ class TTSEmbed(Dialog):
         s.addWidget(p)
 
         self.remove_media_button = b = self.bb.addButton(_('&Remove existing audio'), QDialogButtonBox.ButtonRole.ActionRole)
-        b.setToolTip(_('Remove any exisiting audio overlays, such as a previously created Text-to-speech narration from this book'))
+        b.setToolTip(_('Remove any existing audio overlays, such as a previously created Text-to-speech narration from this book'))
         b.setIcon(QIcon.ic('trash.png'))
         b.clicked.connect(self.remove_media)
         v.addWidget(self.bb)

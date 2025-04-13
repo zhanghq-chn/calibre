@@ -36,7 +36,17 @@ from calibre.utils.config import Config, ConfigProxy, OptionParser, make_config_
 from polyglot.builtins import iteritems, itervalues
 
 builtin_names = frozenset(p.name for p in builtin_plugins)
-BLACKLISTED_PLUGINS = frozenset({'Marvin XD', 'iOS reader applications'})
+BLACKLISTED_PLUGINS = frozenset({
+    'Marvin XD',
+    'iOS reader applications',
+
+    # Subsumed by builtin functionality
+    'KoboTouchExtended',
+    'KePub Input',
+    'KePub Output',
+    'KePub Metadata Reader',
+    'KePub Metadata Writer',
+})
 
 
 def zip_value(iterable, value):
@@ -79,6 +89,16 @@ def load_plugin(path_to_zip_file):  # {{{
 
 # Enable/disable plugins {{{
 
+def disable_plugin_by_name(name: str) -> None:
+    dp = config['disabled_plugins']
+    dp.add(name)
+    config['disabled_plugins'] = dp
+    ep = config['enabled_plugins']
+    if name in ep:
+        ep.remove(name)
+        config['enabled_plugins'] = ep
+
+
 def disable_plugin(plugin_or_name):
     x = getattr(plugin_or_name, 'name', plugin_or_name)
     plugin = find_plugin(x)
@@ -86,13 +106,7 @@ def disable_plugin(plugin_or_name):
         raise ValueError(f'No plugin named: {x} found')
     if not plugin.can_be_disabled:
         raise ValueError(f'Plugin {x} cannot be disabled')
-    dp = config['disabled_plugins']
-    dp.add(x)
-    config['disabled_plugins'] = dp
-    ep = config['enabled_plugins']
-    if x in ep:
-        ep.remove(x)
-    config['enabled_plugins'] = ep
+    disable_plugin_by_name(x)
 
 
 def enable_plugin(plugin_or_name):
@@ -123,11 +137,11 @@ default_disabled_plugins = {
 }
 
 
-def is_disabled(plugin):
-    if plugin.name in config['enabled_plugins']:
+def is_disabled(plugin_or_name):
+    name = getattr(plugin_or_name, 'name', plugin_or_name)
+    if name in config['enabled_plugins']:
         return False
-    return plugin.name in config['disabled_plugins'] or \
-            plugin.name in default_disabled_plugins
+    return name in config['disabled_plugins'] or name in default_disabled_plugins
 # }}}
 
 
@@ -661,6 +675,13 @@ def device_plugins(include_disabled=False):
                     yield plugin
 
 
+def usbms_plugins(include_disabled=True):
+    from calibre.devices.usbms.driver import USBMS
+    for plugin in device_plugins(include_disabled):
+        if isinstance(plugin, USBMS) and plugin.name not in ('Folder Device Interface', 'User Defined USB driver'):
+            yield plugin
+
+
 def disabled_device_plugins():
     for plugin in _initialized_plugins:
         if isinstance(plugin, DevicePlugin):
@@ -694,7 +715,7 @@ def patch_metadata_plugins(possibly_updated_plugins):
             if pup is not None:
                 if pup.version > plugin.version and pup.minimum_calibre_version <= numeric_version:
                     patches[i] = pup(None)
-                    # Metadata source plugins dont use initialize() but that
+                    # Metadata source plugins don't use initialize() but that
                     # might change in the future, so be safe.
                     patches[i].initialize()
     for i, pup in iteritems(patches):
@@ -716,7 +737,7 @@ def all_edit_book_tool_plugins():
 _initialized_plugins = []
 
 
-def initialize_plugin(plugin, path_to_zip_file, installation_type):
+def initialize_plugin(plugin, path_to_zip_file=None, installation_type=PluginInstallationType.BUILTIN):
     try:
         p = plugin(path_to_zip_file)
         p.installation_type = installation_type
@@ -765,6 +786,15 @@ def initialize_plugins(perf=False):
     for p in system_conflicts:
         system_plugins.pop(p, None)
     external_plugins = config['plugins'].copy()
+
+    if 'KoboTouchExtended' in external_plugins and is_disabled('KoboTouch') and not is_disabled('KoboTouchExtended'):
+        # We disable KoboTouchExtended and re-enable KoboTouch so that the Kobo
+        # device keeps working even though KoboTouchExtended is blacklisted.
+        try:
+            disable_plugin_by_name('KoboTouchExtended')
+            enable_plugin('KoboTouch')
+        except Exception:
+            traceback.print_exc()
     for name in BLACKLISTED_PLUGINS:
         external_plugins.pop(name, None)
         system_plugins.pop(name, None)

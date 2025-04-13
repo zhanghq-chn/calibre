@@ -105,6 +105,9 @@ class Publish(Command):
     def pre_sub_commands(self, opts):
         require_git_master()
         require_clean_git()
+        version = tuple(map(int, __version__.split('.')))  # noqa: RUF048
+        if version[2] > 99:
+            raise SystemExit(f'The version number {__version__} indicates a preview release, did you mean to run ./setup.py publish_preview?')
         if 'PUBLISH_BUILD_DONE' not in os.environ:
             subprocess.check_call([sys.executable, 'setup.py', 'check'])
             subprocess.check_call([sys.executable, 'setup.py', 'build'])
@@ -136,7 +139,7 @@ class PublishPreview(Command):
     sub_commands = ['stage1', 'stage2', 'sdist']
 
     def pre_sub_commands(self, opts):
-        version = tuple(map(int, __version__.split('.')))
+        version = tuple(map(int, __version__.split('.')))  # noqa: RUF048
         if version[2] < 100:
             raise SystemExit('Must set calibre version to have patch level greater than 100')
         require_clean_git()

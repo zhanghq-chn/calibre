@@ -350,18 +350,18 @@ def atomic_write(base, name, content):
 
 
 def run_rapydscript_tests():
+    from calibre.gui2 import must_use_qt
+    must_use_qt()
+    from calibre.utils.webengine import create_script, insert_scripts, secure_webengine, setup_default_profile, setup_fake_protocol, setup_profile
+    setup_fake_protocol()
+    setup_default_profile()
     from urllib.parse import parse_qs
 
     from qt.core import QApplication, QByteArray, QEventLoop, QUrl
     from qt.webengine import QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineUrlRequestJob, QWebEngineUrlSchemeHandler
 
     from calibre.constants import FAKE_HOST, FAKE_PROTOCOL
-    from calibre.gui2 import must_use_qt
     from calibre.gui2.viewer.web_view import send_reply
-    from calibre.utils.webengine import create_script, insert_scripts, secure_webengine, setup_default_profile, setup_fake_protocol, setup_profile
-    must_use_qt()
-    setup_fake_protocol()
-    setup_default_profile()
 
     base = base_dir()
     rapydscript_dir = os.path.join(base, 'src', 'pyj')
@@ -430,10 +430,13 @@ def run_rapydscript_tests():
 
     tester = Tester()
     result = tester.spin_loop()
+    if result is None:
+        result = 1
     raise SystemExit(int(result))
 
 
 def set_data(src, **kw):
+    from calibre.db.constants import NO_SEARCH_LINK
     for k, v in {
         '__SPECIAL_TITLE__': SPECIAL_TITLE_FOR_WEBENGINE_COMMS,
         '__FAKE_PROTOCOL__': FAKE_PROTOCOL,
@@ -442,7 +445,8 @@ def set_data(src, **kw):
         '__DARK_LINK_COLOR__': dark_link_color,
         '__BUILTIN_COLORS_LIGHT__': json.dumps(builtin_colors_light),
         '__BUILTIN_COLORS_DARK__': json.dumps(builtin_colors_dark),
-        '__BUILTIN_DECORATIONS__': json.dumps(builtin_decorations)
+        '__BUILTIN_DECORATIONS__': json.dumps(builtin_decorations),
+        '__NO_SEARCH_LINK__': NO_SEARCH_LINK,
     }.items():
         src = src.replace(k, v, 1)
     for k, v in kw.items():

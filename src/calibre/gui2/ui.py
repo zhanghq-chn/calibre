@@ -125,7 +125,8 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
     def __init__(self, opts, parent=None, gui_debug=None):
         MainWindow.__init__(self, opts, parent=parent, disable_automatic_gc=True)
         self.setVisible(False)
-        self.setWindowIcon(QApplication.instance().windowIcon())
+        if not ismacos:
+            self.setWindowIcon(QApplication.instance().windowIcon())
         self.extra_files_watcher = ExtraFilesWatcher(self)
         self.jobs_pointer = Pointer(self)
         self.proceed_requested.connect(self.do_proceed,
@@ -888,6 +889,15 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             self.activateWindow()
         elif msg.startswith('shutdown:'):
             self.quit(confirm_quit=False)
+        elif msg.startswith('save-annotations:'):
+            from calibre.gui2.viewer.integration import save_annotations_in_gui
+            try:
+                if not save_annotations_in_gui(self.library_broker, msg[len('save-annotations:'):]):
+                    print('Failed to update annotations for book from viewer, book or library not found.', file=sys.stderr)
+            except Exception:
+                import traceback
+                error_dialog(self, _('Failed to update annotations'), _(
+                    'Failed to update annotations in the database for the book being currently viewed.'), det_msg=traceback.format_exc(), show=True)
         elif msg.startswith('bookedited:'):
             parts = msg.split(':')[1:]
             try:

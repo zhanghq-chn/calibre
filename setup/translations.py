@@ -286,7 +286,7 @@ class Translations(POT):  # {{{
 
     def is_po_file_ok(self, x):
         bname = os.path.splitext(os.path.basename(x))[0]
-        # sr@latin.po is identical to sr.po. And we dont support country
+        # sr@latin.po is identical to sr.po. And we don't support country
         # specific variants except for a few.
         if '_' in bname:
             return bname.partition('_')[0] in ('pt', 'zh', 'bn')
@@ -511,7 +511,7 @@ class Translations(POT):  # {{{
             locale = fmap[src]
             trans, untrans = data['translated'], data['untranslated']
             total = trans + untrans
-            stats[locale] = int(round(100 * trans / total))
+            stats[locale] = round(100 * trans / total)
 
         with TemporaryDirectory() as tdir, ZipFile(self.j(srcbase, 'locales.zip'), 'w', ZIP_STORED) as zf:
             for f in os.listdir(srcbase):

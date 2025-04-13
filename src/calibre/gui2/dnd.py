@@ -11,7 +11,7 @@ import re
 from contextlib import suppress
 from threading import Thread
 
-from qt.core import QDialog, QDialogButtonBox, QImageReader, QLabel, QPixmap, QProgressBar, Qt, QTimer, QUrl, QVBoxLayout
+from qt.core import QDialog, QDialogButtonBox, QImageReader, QLabel, QMimeData, QPixmap, QProgressBar, Qt, QTimer, QUrl, QVBoxLayout
 
 from calibre import as_unicode, browser, prints
 from calibre.constants import DEBUG, iswindows
@@ -386,3 +386,8 @@ def get_firefox_rurl(md, exts):
 
 def has_firefox_ext(md, exts):
     return bool(get_firefox_rurl(md, exts)[0])
+
+
+def set_urls_from_local_file_paths(md: QMimeData, *paths: str) -> QMimeData:
+    md.setUrls(list(map(QUrl.fromLocalFile, paths)))
+    return md

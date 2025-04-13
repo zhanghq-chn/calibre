@@ -300,7 +300,7 @@ class NumericSearch:  # {{{
                 raise ParseException(
                         _('Non-numeric value in query: {0}').format(query))
             if dt == 'half-rating':
-                q = int(round(q * 2))
+                q = round(q * 2)
                 cast = int
 
         qfalse = query == 'false'
@@ -707,7 +707,7 @@ class Parser(SearchQueryParser):  # {{{
                 continue
             if fm['search_terms'] and x not in {'series_sort', 'id'}:
                 if x not in self.virtual_fields and x != 'uuid':
-                    # We dont search virtual fields because if we do, search
+                    # We don't search virtual fields because if we do, search
                     # caching will not be used
                     all_locs.add(x)
                 field_metadata[x] = fm

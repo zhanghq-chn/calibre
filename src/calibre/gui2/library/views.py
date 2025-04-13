@@ -36,7 +36,6 @@ from qt.core import (
     Qt,
     QTableView,
     QTimer,
-    QUrl,
     pyqtSignal,
 )
 
@@ -165,7 +164,7 @@ class PreserveViewState:  # {{{
     '''
     Save the set of selected books at enter time. If at exit time there are no
     selected books, restore the previous selection, the previous current index
-    and dont affect the scroll position.
+    and don't affect the scroll position.
     '''
 
     def __init__(self, view, preserve_hpos=True, preserve_vpos=True, require_selected_ids=True):
@@ -1238,9 +1237,7 @@ class BooksView(TableView):  # {{{
     @property
     def visible_columns(self):
         h = self.horizontalHeader()
-        logical_indices = (x for x in range(h.count()) if not h.isSectionHidden(x))
-        rmap = dict(enumerate(self.column_map))
-        return (rmap[h.visualIndex(x)] for x in logical_indices if h.visualIndex(x) > -1)
+        return (key for lidx,key in enumerate(self.column_map) if not h.isSectionHidden(lidx))
 
     def refresh_book_details(self, force=False):
         idx = self.currentIndex()
@@ -1623,7 +1620,8 @@ class DeviceBooksView(BooksView):  # {{{
         paths = [force_unicode(p, enc=filesystem_encoding) for p in m.paths(rows) if p]
         md = QMimeData()
         md.setData('application/calibre+from_device', b'dummy')
-        md.setUrls([QUrl.fromLocalFile(p) for p in paths])
+        from calibre.gui2.dnd import set_urls_from_local_file_paths
+        set_urls_from_local_file_paths(md, *paths)
         drag = QDrag(self)
         drag.setMimeData(md)
         cover = self.drag_icon(m.cover(self.currentIndex().row()), len(paths) > 1)
