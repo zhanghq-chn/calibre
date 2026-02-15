@@ -6,7 +6,9 @@ import json
 import time
 from collections import defaultdict
 from functools import partial
+from queue import Empty, Queue
 from threading import Thread
+from urllib.parse import urlparse
 
 from qt.core import (
     QAction,
@@ -52,9 +54,6 @@ from calibre.gui2.widgets2 import HistoryLineEdit2
 from calibre.utils.ipc.simple_worker import offload_worker
 from calibre.utils.resources import get_path as P
 from calibre.utils.webengine import Bridge, create_script, from_js, insert_scripts, secure_webengine, setup_profile, to_js
-from polyglot.builtins import iteritems
-from polyglot.queue import Empty, Queue
-from polyglot.urllib import urlparse
 
 shutdown = object()
 
@@ -110,7 +109,7 @@ class ParseWorker(Thread):
             # Connect to the worker and send a dummy job to initialize it
             self.worker = offload_worker(priority='low')
             self.worker(mod, func, '<p></p>')
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
             self.launch_error = traceback.format_exc()
@@ -133,7 +132,7 @@ class ParseWorker(Thread):
             pi, data = request[1:]
             try:
                 res = self.worker(mod, func, data)
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
             else:
@@ -225,7 +224,7 @@ class UrlSchemeHandler(QWebEngineUrlSchemeHandler):
 
     def check_for_parse(self):
         remove = []
-        for name, requests in iteritems(self.requests):
+        for name, requests in self.requests.items():
             data = parse_worker.get_data(name)
             if data is not None:
                 if not isinstance(data, bytes):
@@ -579,6 +578,9 @@ class Preview(QWidget):
         ac.triggered.connect(self.refresh)
         self.bar.addAction(ac)
 
+        ac = actions['copy-from-preview']
+        ac.triggered.connect(self.copy_to_clipboard)
+
         actions['preview-dock'].toggled.connect(self.visibility_changed)
 
         self.current_name = None
@@ -602,6 +604,9 @@ class Preview(QWidget):
             ac = actions[f'find-{d}-preview']
             ac.triggered.connect(getattr(self, 'find_' + d))
             self.bar.addAction(ac)
+
+    def copy_to_clipboard(self):
+        self.view.triggerPageAction(QWebEnginePage.WebAction.Copy)
 
     def clear_clicked(self):
         self.view._page.findText('')

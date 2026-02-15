@@ -96,11 +96,10 @@ class HeuristicProcessor:
                 return '<'+tag+' '+pstyle+'>'
             else:
                 return '<'+tag+' '+pstyle+'>'+span
+        elif not span:
+            return '<'+tag+' style="text-indent:3%">'
         else:
-            if not span:
-                return '<'+tag+' style="text-indent:3%">'
-            else:
-                return '<'+tag+' style="text-indent:3%">'+span
+            return '<'+tag+' style="text-indent:3%">'+span
 
     def no_markup(self, raw, percent):
         '''
@@ -117,10 +116,7 @@ class HeuristicProcessor:
         # self.log.debug("There are " + str(tot_ln_fds) + " total Line feeds, and " +
         #         str(tot_htm_ends) + " marked up endings")
 
-        if percent > 1:
-            percent = 1
-        if percent < 0:
-            percent = 0
+        percent = min(max(percent, 0), 1)
 
         min_lns = tot_ln_fds * percent
         # self.log.debug("There must be fewer than " + str(min_lns) + " unmarked lines to add markup")
@@ -601,7 +597,7 @@ class HeuristicProcessor:
                 if replacement_break.find('width') != -1:
                     try:
                         width = int(re.sub(r'.*?width(:|=)(?P<wnum>\d+).*', r'\g<wnum>', replacement_break))
-                    except:
+                    except Exception:
                         scene_break = hr_open+'<hr style="height: 3px; background:#505050" /></div>'
                         self.log.warn('Invalid replacement scene break'
                                 ' expression, using default')
@@ -733,7 +729,7 @@ class HeuristicProcessor:
         # other types of processing are attempted
         try:
             self.totalwords = self.get_word_count(html)
-        except:
+        except Exception:
             self.log.warn("Can't get wordcount")
 
         if self.totalwords < 50:

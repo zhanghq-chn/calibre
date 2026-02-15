@@ -101,6 +101,15 @@ class HTMLZOutput(OutputFormatPlugin):
                         fname = os.path.join(tdir, 'images', images[item.href])
                         with open(fname, 'wb') as img:
                             img.write(data)
+            # Fonts
+            if htmlizer.fonts:
+                os.makedirs(os.path.join(tdir, 'fonts'), exist_ok=True)
+                for item in oeb_book.manifest:
+                    if item.href in htmlizer.fonts:
+                        data = item.data
+                        fname = os.path.join(tdir, 'fonts', htmlizer.fonts[item.href])
+                        with open(fname, 'wb') as f:
+                            f.write(data)
 
             # Cover
             cover_path = None
@@ -115,7 +124,7 @@ class HTMLZOutput(OutputFormatPlugin):
                     with open(cover_path, 'w') as cf:
                         cf.write('')
                     save_cover_data_to(cover_data, cover_path)
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
 

@@ -22,8 +22,7 @@ from calibre.gui2.wizard.library_ui import Ui_WizardPage as LibraryUI
 from calibre.gui2.wizard.send_email import smtp_prefs
 from calibre.gui2.wizard.stanza_ui import Ui_WizardPage as StanzaUI
 from calibre.utils.config import dynamic, prefs
-from calibre.utils.localization import _, localize_user_manual_link
-from polyglot.builtins import iteritems
+from calibre.utils.localization import _, localize_user_manual_link, localize_website_link
 
 # Devices {{{
 
@@ -83,7 +82,7 @@ class Tablet(Device):
 class Kindle(Device):
 
     output_profile = 'kindle'
-    output_format  = 'MOBI'
+    output_format  = 'AZW3'
     untranslated_name, name = gettext('Kindle Basic (all models)')
     manufacturer = 'Amazon'
     id = 'kindle'
@@ -110,7 +109,7 @@ class JetBookMini(Device):
 class KindleDX(Kindle):
 
     output_profile = 'kindle_dx'
-    output_format  = 'MOBI'
+    output_format  = 'AZW3'
     untranslated_name = name = 'Kindle DX'
     id = 'kindledx'
 
@@ -453,8 +452,7 @@ def get_manufacturers():
     mans = set()
     for x in get_devices():
         mans.add(x.manufacturer)
-    if Device.manufacturer in mans:
-        mans.remove(Device.manufacturer)
+    mans.discard(Device.manufacturer)
     return [Device.manufacturer] + sorted(mans)
 
 
@@ -523,12 +521,14 @@ class KindlePage(QWizardPage, KindleUI):
     def __init__(self):
         QWizardPage.__init__(self)
         self.setupUi(self)
+        with suppress(Exception):
+            self.email_title_label.setText(self.email_title_label.text().format('https://gmx.com'))
 
     def initializePage(self):
         opts = smtp_prefs().parse()
         accs = []
         has_default = False
-        for x, ac in iteritems(opts.accounts):
+        for x, ac in opts.accounts.items():
             default = ac[2]
             if x.strip().endswith('@kindle.com'):
                 accs.append((x, default))
@@ -612,7 +612,7 @@ class StanzaPage(QWizardPage, StanzaUI):
                     t = re.sub(r':\d+', ':'+str(p), t)
                     self.instructions.setText(t)
                     return p
-                except:
+                except Exception:
                     continue
 
 
@@ -738,7 +738,7 @@ class LibraryPage(QWizardPage, LibraryUI):
 
     def change_language(self, idx):
         prefs['language'] = str(self.language.itemData(self.language.currentIndex()) or '')
-        from polyglot.builtins import builtins
+        import builtins
         builtins.__dict__['_'] = lambda x: x
         from calibre.ebooks.metadata.book.base import reset_field_metadata
         from calibre.gui2 import qt_app
@@ -758,7 +758,7 @@ class LibraryPage(QWizardPage, LibraryUI):
             from calibre.customize.ui import enable_plugin
             for name in metadata_plugins:
                 enable_plugin(name)
-        except:
+        except Exception:
             pass
         lp = self.location.text()
         if lp == self.initial_library_location:
@@ -771,7 +771,7 @@ class LibraryPage(QWizardPage, LibraryUI):
         from calibre.db.legacy import LibraryDatabase
         try:
             return LibraryDatabase.exists_at(x) or not os.listdir(x)
-        except:
+        except Exception:
             return False
 
     def validatePage(self):
@@ -794,7 +794,7 @@ class LibraryPage(QWizardPage, LibraryUI):
             if not os.path.exists(x):
                 try:
                     self.makedirs(x)
-                except:
+                except Exception:
                     return error_dialog(self, _('Bad location'),
                             _('Failed to create a folder at %s')%x,
                             det_msg=traceback.format_exc(), show=True)
@@ -808,7 +808,7 @@ class LibraryPage(QWizardPage, LibraryUI):
         if not isinstance(x, str):
             try:
                 x = x.decode(filesystem_encoding)
-            except:
+            except Exception:
                 x = str(repr(x))
         error_dialog(self, _('Bad location'),
             _('You must choose an empty folder for '
@@ -829,7 +829,7 @@ class LibraryPage(QWizardPage, LibraryUI):
             if not os.path.exists(lp):
                 try:
                     self.makedirs(lp)
-                except:
+                except Exception:
                     traceback.print_exc()
                     try:
                         lp = os.path.expanduser('~')
@@ -850,7 +850,7 @@ class LibraryPage(QWizardPage, LibraryUI):
             lp = str(self.location.text())
             ans = bool(lp) and os.path.exists(lp) and os.path.isdir(lp) and os.access(lp,
                     os.W_OK)
-        except:
+        except Exception:
             ans = False
         return ans
 
@@ -881,10 +881,9 @@ class FinishPage(QWizardPage, FinishUI):
     def __init__(self):
         QWizardPage.__init__(self)
         self.setupUi(self)
-        try:
+        with suppress(Exception):  # link already localized
+            self.demo_label.setText(self.demo_label.text().format(localize_website_link('https://calibre-ebook.com/demo')))
             self.um_label.setText(self.um_label.text() % localize_user_manual_link('https://manual.calibre-ebook.com'))
-        except TypeError:
-            pass  # link already localized
 
     def nextId(self):
         return -1
@@ -933,7 +932,7 @@ class Wizard(QWizard):
         self.resize(600, 520)
 
     def set_button_texts(self):
-        for but, text in iteritems(self.BUTTON_TEXTS):
+        for but, text in self.BUTTON_TEXTS.items():
             self.setButtonText(getattr(QWizard.WizardButton, but+'Button'), _(text))
 
     def retranslate(self):

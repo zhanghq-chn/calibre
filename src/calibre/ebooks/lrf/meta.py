@@ -17,14 +17,13 @@ import os
 import struct
 import sys
 import xml.dom.minidom as dom
-import zlib
+from compression import zlib
 from functools import wraps
 from shutil import copyfileobj
 
 from calibre.ebooks.chardet import xml_to_unicode
 from calibre.ebooks.metadata import MetaInformation, string_to_authors
 from calibre.utils.cleantext import clean_xml_chars
-from polyglot.builtins import string_or_bytes
 
 BYTE      = '<B'  #: Unsigned char little endian encoded in 1 byte
 WORD      = '<H'  #: Unsigned short little endian encoded in 2 bytes
@@ -98,7 +97,7 @@ class fixed_stringfield:
         return obj.unpack(start=self._start, fmt='<'+length+'s')[0]
 
     def __set__(self, obj, val):
-        if not isinstance(val, string_or_bytes):
+        if not isinstance(val, (str, bytes)):
             val = str(val)
         if isinstance(val, str):
             val = val.encode('utf-8')
@@ -277,13 +276,13 @@ def get_metadata(stream):
         mi.title_sort = lrf.title_reading.strip()
         if not mi.title_sort:
             mi.title_sort = None
-    except:
+    except Exception:
         pass
     try:
         mi.author_sort = lrf.author_reading.strip()
         if not mi.author_sort:
             mi.author_sort = None
-    except:
+    except Exception:
         pass
     if not mi.title or 'unknown' in mi.title.lower():
         mi.title = None
@@ -733,7 +732,7 @@ def main(args=sys.argv):
     if options.get_cover:
         try:
             ext, data = lrf.get_cover()
-        except:  # Fails on books created by LRFCreator 1.0
+        except Exception:  # Fails on books created by LRFCreator 1.0
             ext, data = None, None
         if data:
             cover = os.path.splitext(os.path.basename(args[1]))[0]+'_cover.'+ext

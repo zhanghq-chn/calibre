@@ -16,15 +16,15 @@ The language is built around the notion of a `template`, which specifies which b
 Basic templates
 ---------------
 
-A basic template consists one or more ``template expressions``. A ``template expression`` consists of text and names in curly brackets (``{}``) that is replaced by the corresponding metadata from the book being processed. For example, the default template in calibre used for saving books to device has 4 ``template expressions``::
+A basic template consists of one or more ``template expressions``. A ``template expression`` consists of text and names in curly brackets (``{}``) that is replaced by the corresponding metadata from the book being processed. For example, the default template in calibre used for saving books to device has 4 ``template expressions``::
 
     {author_sort}/{title}/{title} - {authors}
 
-For the book "The Foundation" by "Isaac Asimov" the  will become::
+For the book "The Foundation" by "Isaac Asimov" the template will become::
 
     Asimov, Isaac/The Foundation/The Foundation - Isaac Asimov
 
-The slashes are not ``template expressions`` because they are in between in ``{}``. Such text is left where it appears. For example, if the template is::
+The slashes are not ``template expressions`` because they are not in between ``{}``. Such text is left where it appears. For example, if the template is::
 
     {author_sort} Some Important Text {title}/{title} - {authors}
 
@@ -83,7 +83,7 @@ The hyphens will be included only if the book has a series index, which it has o
 Notes:
 
 * You must include the colon after the ``lookup name`` if you are using a prefix or a suffix.
-* You must either use either no or both ``|`` characters. Using one, as in ``{field:| - }``, is not allowed.
+* You must use either no or both ``|`` characters. Using one, as in ``{field:| - }``, is not allowed.
 * It is OK to provide no text for either the prefix or the suffix, such as in ``{series:|| - }``. The template ``{title:||}`` is the same as ``{title}``.
 
 **Formatting**
@@ -180,7 +180,7 @@ You see that the function requires two arguments, ``value`` and ``text_if_empty`
 
   {tags:ifempty(No tags on this book)}
 
-shows the tags for a book, if any. If it has no tags then it show `No tags on this book`.
+shows the tags for a book, if any. If it has no tags then it shows `No tags on this book`.
 
 The following functions are usable in Single Function Mode because their first parameter is ``value``.
 
@@ -192,6 +192,7 @@ The following functions are usable in Single Function Mode because their first p
 * :ffsum:`encode_for_url`
 * :ffsum:`floor`
 * :ffsum:`format_date`
+* :ffsum:`format_duration`
 * :ffsum:`format_number`
 * :ffsum:`fractional_part`
 * :ffsum:`human_readable`
@@ -257,7 +258,7 @@ General Program Mode
     times_div_op    ::= '*' | '/'
     unary_op_expr   ::= [ add_sub_op unary_op_expr ]* | expression
     expression      ::= identifier | constant | function | assignment | field_reference |
-                        if_expr | for_expr | break_expr | continue_expr |
+                        if_expr | for_expr | break_expr | continue_expr | return_stmt
                         '(' expression_list ')' | function_def
     field_reference ::= '$' [ '$' ] [ '#' ] identifier
     identifier      ::= id_start [ id_rest ]*
@@ -278,9 +279,11 @@ General Program Mode
     for_range       ::= 'for' identifier 'in' range_expr ':' expression_list 'rof'
     range_expr      ::= 'range' '(' [ start_expr ',' ] stop_expr
                         [ ',' step_expr [ ',' limit_expr ] ] ')'
+    with_expr       ::= 'with' top_expression ':' expression_list 'htiw'
     list_expr       ::= top_expression
     break_expr      ::= 'break'
     continue_expr   ::= 'continue'
+    return_stmt     ::= 'return' top_expression
     separator_expr  ::= top_expression
     start_expr      ::= top_expression
     stop_expr       ::= top_expression
@@ -293,7 +296,7 @@ Notes:
 * In a logical context, any non-empty value is ``True``
 * In a logical context, the empty value is ``False``
 * Strings and numbers can be used interchangeably. For example, ``10`` and ``'10'`` are the same thing.
-* Comments are lines starting with a '#' character. Comments beginning later in a line are not supported.
+* Comments are lines starting with a '#' character, possibly preceded by blanks or tabs.
 
 **Operator precedence**
 
@@ -379,6 +382,33 @@ If the original Genre is `History.Military, Science Fiction.Alternate History, R
 
 Note: the last line in the template, ``new_tags``, isn't strictly necessary in this case because ``for`` returns the value of the last top_expression in the expression list. The value of an assignment is the value of its expression, so the value of the ``for`` statement is what was assigned to ``new_tags``.
 
+**with expressions**
+
+The ``with`` expression:
+
+#. changes the current book to the book with calibre book id (an integer) produced by evaluating the ``top_expression``.
+#. runs the ``expression_list``.
+#. then resets the current book back to what it was.
+
+The ``with`` expression returns the result of the last ``top_expression`` in the evaluated
+``expression_list``, or the empty string if no expression list was evaluated.
+
+For example, this template returns a list of the titles of each book selected in the GUI::
+
+  program:
+    res = '';
+    ids = selected_books();
+    for id in ids:
+        with id:
+            res = (if res then res & ', ' fi) & $title
+        htiw
+    rof;
+    res
+
+**Return stmt**
+
+Return the value of the ``expression``. If executed in a function then it returns the value of the expression to the caller. If executed in the outermost context (the template) then it sets the value of the template to the value of the expression and exits the template.
+
 **Function definition**
 
 If you have repeated code in a template then you can put that code into a local function. The ``def`` keyword starts the definition. It is followed by the function name, the argument list, then the code in the function. The function definition ends with the ``fed`` keyword.
@@ -452,7 +482,7 @@ More complex programs in template expressions - Template Program Mode
 Example: assume you want a template to show the series for a book if it has one, otherwise show
 the value of a custom field #genre. You cannot do this in the :ref:`Single Function Mode <single_mode>` because you cannot make reference to another metadata field within a template expression. In `TPM` you can, as the following expression demonstrates::
 
-    {series_index:0>7.1f:'ifempty($, -5)'}
+    {series:'ifempty($, $#genre)'}
 
 The example shows several things:
 
@@ -460,14 +490,14 @@ The example shows several things:
 
   If the template contains a prefix and suffix, the expression ends with ``'|`` where the ``|`` is the delimiter for the prefix. Example::
 
-    {series_index:0>7.1f:'ifempty($, -5)'|prefix | suffix}
+    {series:'ifempty($, $#genre)'|prefix | suffix}
 
 * Functions must be given all their arguments. For example, the standard built-in functions must be given the initial parameter ``value``.
-* The variable ``$`` is usable as the ``value`` argument and stands for the value of the field named in the template, ``series_index`` in this case.
+* The variable ``$`` is usable as the ``value`` argument and stands for the value of the field named in the template, ``series`` in this case.
 * white space is ignored and can be used anywhere within the expression.
 * constant strings are enclosed in matching quotes, either ``'`` or ``"``.
 
-In `TPM`, using ``{`` and ``}`` characters in string literals can lead to errors or unexpected results because they confuse the template processor. It tries to treat them as template expression boundaries, not characters. In some but not all cases you can replace a ``{`` with ``[[`` and a ``}`` with `]]`. Generally, if your program contains ``{`` and ``}`` characters then you should use `General Program Mode`.
+In `TPM`, using ``{`` and ``}`` characters in string literals can lead to errors or unexpected results because they confuse the template processor. It tries to treat them as template expression boundaries, not characters. In some but not all cases you can replace a ``{`` with ``[[`` and a ``}`` with `]]`. Advice: if your program contains ``{`` and ``}`` characters then you should use `General Program Mode`.
 
 .. _python_mode:
 

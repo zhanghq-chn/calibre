@@ -4,6 +4,7 @@
 import os
 import shutil
 import sys
+from functools import lru_cache
 from itertools import count
 
 from qt.core import (
@@ -36,7 +37,7 @@ from qt.webengine import (
 )
 
 from calibre import as_unicode, prints
-from calibre.constants import FAKE_HOST, FAKE_PROTOCOL, __version__, in_develop_mode, is_running_from_develop, ismacos, iswindows
+from calibre.constants import DEBUG, FAKE_HOST, FAKE_PROTOCOL, __version__, in_develop_mode, is_running_from_develop, ismacos, iswindows
 from calibre.ebooks.metadata.book.base import field_metadata
 from calibre.ebooks.oeb.polish.utils import guess_type
 from calibre.gui2 import choose_images, config, error_dialog, safe_open_url
@@ -51,8 +52,7 @@ from calibre.utils.resources import get_path as P
 from calibre.utils.serialize import json_loads
 from calibre.utils.shared_file import share_open
 from calibre.utils.webengine import Bridge, create_script, from_js, insert_scripts, secure_webengine, send_reply, setup_profile, to_js
-from polyglot.builtins import as_bytes, iteritems
-from polyglot.functools import lru_cache
+from polyglot.builtins import as_bytes
 
 SANDBOX_HOST = FAKE_HOST.rpartition('.')[0] + '.sandbox'
 
@@ -397,8 +397,11 @@ class WebPage(QWebEnginePage):
         if url.scheme() in (FAKE_PROTOCOL, 'data'):
             return True
         if url.scheme() in ('http', 'https', 'calibre') and req_type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+            if DEBUG:
+                prints('Open URL from book:', url.toString())
             safe_open_url(url)
-        prints('Blocking navigation request to:', url.toString())
+        else:
+            prints('Blocking navigation request to:', url.toString(), file=sys.stderr)
         return False
 
     def go_to_anchor(self, anchor):
@@ -671,7 +674,7 @@ class WebView(RestartingWebEngineView):
         self.bridge.create_view(
             vprefs['session_data'], vprefs['local_storage'], field_metadata.all_metadata(), ui_data)
         performance_monitor('bridge ready')
-        for func, args in iteritems(self.pending_bridge_ready_actions):
+        for func, args in self.pending_bridge_ready_actions.items():
             getattr(self.bridge, func)(*args)
 
     def on_iframe_ready(self):

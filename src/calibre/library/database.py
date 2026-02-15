@@ -924,7 +924,7 @@ ALTER TABLE books ADD COLUMN isbn TEXT DEFAULT "" COLLATE NOCASE;
             return self.data[index][1]
         try:
             return self.conn.get('SELECT title FROM meta WHERE id=?',(index,), all=False)
-        except:
+        except Exception:
             return _('Unknown')
 
     def authors(self, index, index_is_id=False):
@@ -936,7 +936,7 @@ ALTER TABLE books ADD COLUMN isbn TEXT DEFAULT "" COLLATE NOCASE;
             return self.data[index][2]
         try:
             return self.conn.get('SELECT authors FROM meta WHERE id=?',(index,), all=False)
-        except:
+        except Exception:
             pass
 
     def author_id(self, index, index_is_id=False):
@@ -1008,7 +1008,7 @@ ALTER TABLE books ADD COLUMN isbn TEXT DEFAULT "" COLLATE NOCASE;
             ans = self.conn.get('SELECT series_index FROM books WHERE id=?', (index,), all=False)
         try:
             return float(ans)
-        except:
+        except Exception:
             return 1.0
 
     def books_in_series(self, series_id):
@@ -1296,7 +1296,7 @@ ALTER TABLE books ADD COLUMN isbn TEXT DEFAULT "" COLLATE NOCASE;
         rating = int(rating)
         self.conn.execute('DELETE FROM books_ratings_link WHERE book=?',(id,))
         rat = self.conn.get('SELECT id FROM ratings WHERE rating=?', (rating,), all=False)
-        rat = rat if rat else self.conn.execute('INSERT INTO ratings(rating) VALUES (?)', (rating,)).lastrowid
+        rat = rat or self.conn.execute('INSERT INTO ratings(rating) VALUES (?)', (rating,)).lastrowid
         self.conn.execute('INSERT INTO books_ratings_link(book, rating) VALUES (?,?)', (id, rat))
         self.conn.commit()
 
@@ -1350,7 +1350,7 @@ ALTER TABLE books ADD COLUMN isbn TEXT DEFAULT "" COLLATE NOCASE;
                 duplicates.append((path, format, mi, uri))
                 continue
             series_index = 1 if mi.series_index is None else mi.series_index
-            aus = mi.author_sort if mi.author_sort else ', '.join(mi.authors)
+            aus = mi.author_sort or ', '.join(mi.authors)
             obj = self.conn.execute('INSERT INTO books(title, uri, series_index, author_sort) VALUES (?, ?, ?, ?)',
                               (mi.title, uri, series_index, aus))
             id = obj.lastrowid
@@ -1493,7 +1493,7 @@ class SearchToken:
             if not text:
                 text = ''
         else:
-            text = ' '.join([item[i] if item[i] else '' for i in self.FIELD_MAP.values()])
+            text = ' '.join([item[i] or '' for i in self.FIELD_MAP.values()])
         return bool(self.pattern.search(text)) ^ self.negate
 
 

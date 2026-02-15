@@ -13,7 +13,6 @@ from calibre.utils.filenames import ascii_filename
 from calibre.utils.fonts.scanner import NoFonts, font_scanner
 from calibre.utils.fonts.utils import is_truetype_font, panose_to_css_generic_family
 from calibre.utils.icu import ord_string
-from polyglot.builtins import codepoint_to_chr, iteritems
 
 Embed = namedtuple('Embed', 'name key subsetted')
 
@@ -124,7 +123,7 @@ def do_map(m, points):
         if base < p < limit:
             yield m[p - base]
         else:
-            yield codepoint_to_chr(p)
+            yield chr(p)
 
 
 def map_symbol_text(text, font):
@@ -167,11 +166,16 @@ class Fonts:
                 fname = self.write(name, dest_dir, docx, variant)
                 if fname is not None:
                     d = {'font-family':'"{}"'.format(name.replace('"', '')), 'src': f'url("fonts/{fname}")'}
+                    # The Kindle rendered needs font-weight/style normal for non bold/italic fonts
                     if 'Bold' in variant:
                         d['font-weight'] = 'bold'
+                    else:
+                        d['font-weight'] = 'normal'
                     if 'Italic' in variant:
                         d['font-style'] = 'italic'
-                    d = [f'{k}: {v}' for k, v in iteritems(d)]
+                    else:
+                        d['font-style'] = 'normal'
+                    d = [f'{k}: {v}' for k, v in d.items()]
                     d = ';\n\t'.join(d)
                     defs.append(f'@font-face {{\n\t{d}\n}}\n')
         return '\n'.join(defs)

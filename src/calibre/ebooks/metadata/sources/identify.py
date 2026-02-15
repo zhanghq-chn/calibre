@@ -45,7 +45,7 @@ class Worker(Thread):
         start = time.time()
         try:
             self.plugin.identify(self.log, self.rq, self.abort, **self.kwargs)
-        except:
+        except Exception:
             self.log.exception('Plugin', self.plugin.name, 'failed')
         self.plugin.dl_time_spent = time.time() - start
 
@@ -122,14 +122,13 @@ class ISBNMerge:
                     if xw.is_alive():
                         self.log.error('Query to xISBN timed out')
                         self.use_xisbn = False
+                    elif xw.exception:
+                        self.log.error('Query to xISBN failed:')
+                        self.log.debug(xw.tb)
                     else:
-                        if xw.exception:
-                            self.log.error('Query to xISBN failed:')
-                            self.log.debug(xw.tb)
-                        else:
-                            isbns, min_year = xw.isbns, xw.min_year
-                            if not msprefs['find_first_edition_date']:
-                                min_year = None
+                        isbns, min_year = xw.isbns, xw.min_year
+                        if not msprefs['find_first_edition_date']:
+                            min_year = None
                 if not isbns:
                     isbns = frozenset([isbn])
                 if isbns in self.pools:
@@ -182,7 +181,7 @@ class ISBNMerge:
         # First title/author
         groups = {}
         for result in self.results:
-            title = lower(result.title if result.title else '')
+            title = lower(result.title or '')
             key = (title, tuple(lower(x) for x in result.authors))
             if key not in groups:
                 groups[key] = []
@@ -325,8 +324,7 @@ class ISBNMerge:
             for r in results:
                 if r.pubdate is not None:
                     candidate = as_utc(r.pubdate)
-                    if candidate < min_date:
-                        min_date = candidate
+                    min_date = min(min_date, candidate)
             if min_date.year < 3000:
                 ans.pubdate = min_date
 
@@ -534,10 +532,10 @@ def identify(log, abort,  # {{{
         if getattr(r.pubdate, 'year', 2000) <= UNDEFINED_DATE.year:
             r.pubdate = None
         if pm_rules and r.publisher:
-            pubs = map_tags([r.publisher], pm_rules)
+            pubs = map_tags([r.publisher], pm_rules, separator='')
             r.publisher = pubs[0] if pubs else ''
         if s_rules and r.series:
-            ss = map_tags([r.series], s_rules)
+            ss = map_tags([r.series], s_rules, separator='')
             r.series = ss[0] if ss else ''
 
     if msprefs['swap_author_names']:

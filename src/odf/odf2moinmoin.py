@@ -23,8 +23,6 @@
 import xml.dom.minidom
 import zipfile
 
-from polyglot.builtins import unicode_type
-
 from .elementtypes import empty_elements, inline_elements
 from .namespaces import nsdict
 
@@ -100,7 +98,7 @@ class TextProps:
 
     def __unicode__(self):
 
-        return f'[italic={unicode_type(self.italic)}, bold=i{unicode_type(self.bold)}, fixed={unicode_type(self.fixed)}]'
+        return f'[italic={self.italic!s}, bold=i{self.bold!s}, fixed={self.fixed!s}]'
     __str__ = __unicode__
 
 
@@ -129,7 +127,7 @@ class ParagraphProps:
 
     def __unicode__(self):
 
-        return f'[bq={unicode_type(self.blockquote)}, h={self.headingLevel}, code={unicode_type(self.code)}]'
+        return f'[bq={self.blockquote!s}, h={self.headingLevel}, code={self.code!s}]'
     __str__ = __unicode__
 
 
@@ -217,7 +215,7 @@ class ODF2MoinMoin:
             try:
                 level = int(level)
                 paraProps.setHeading(level)
-            except:
+            except Exception:
                 level = 0
 
         if name == 'Title':
@@ -232,7 +230,7 @@ class ODF2MoinMoin:
                     leftMargin = float(leftMargin[:-2])
                     if leftMargin > 0.01:
                         paraProps.setIndented(True)
-                except:
+                except Exception:
                     pass
 
         textProps = self.extractTextProperties(style)
@@ -350,7 +348,7 @@ class ODF2MoinMoin:
         try:
             num = int(node.getAttribute('text:c'))
             return ' '*num
-        except:
+        except Exception:
             return ' '
 
     def text_tab(self, node):
@@ -400,7 +398,7 @@ class ODF2MoinMoin:
             buffer.append(' '*indent)
             i += 1
             if props.ordered:
-                number = unicode_type(i)
+                number = str(i)
                 number = ' ' + number + '. '
                 buffer.append(' 1. ')
             else:

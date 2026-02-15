@@ -11,7 +11,6 @@ import os
 from calibre import prints
 from calibre.constants import preferred_encoding
 from calibre.utils.config import from_json, to_json
-from polyglot.builtins import iteritems
 
 
 class DBPrefs(dict):
@@ -24,7 +23,7 @@ class DBPrefs(dict):
         for key, val in self.db.conn.get('SELECT key,val FROM preferences'):
             try:
                 val = self.raw_to_object(val)
-            except:
+            except Exception:
                 prints('Failed to read value for:', key, 'from db')
                 continue
             dict.__setitem__(self, key, val)
@@ -87,7 +86,7 @@ class DBPrefs(dict):
                 data = data.encode('utf-8')
             with open(to_filename, 'wb') as f:
                 f.write(data)
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
 
@@ -102,7 +101,7 @@ class DBPrefs(dict):
                     return d
                 cls.clear()
                 cls.db.conn.execute('DELETE FROM preferences')
-                for k,v in iteritems(d):
+                for k,v in d.items():
                     raw = cls.to_raw(v)
                     cls.db.conn.execute(
                         'INSERT INTO preferences (key,val) VALUES (?,?)', (k, raw))
@@ -110,7 +109,7 @@ class DBPrefs(dict):
                 cls.clear()
                 cls.update(d)
                 return d
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
             raise

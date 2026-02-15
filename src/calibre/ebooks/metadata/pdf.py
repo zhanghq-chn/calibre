@@ -13,7 +13,6 @@ from calibre.constants import iswindows
 from calibre.ebooks.metadata import MetaInformation, check_doi, check_isbn, string_to_authors
 from calibre.ptempfile import TemporaryDirectory
 from calibre.utils.ipc.simple_worker import WorkerError, fork_job
-from polyglot.builtins import iteritems
 
 
 def get_tools():
@@ -23,6 +22,16 @@ def get_tools():
     pdfinfo = os.path.join(base, 'pdfinfo') + suffix
     pdftoppm = os.path.join(base, 'pdftoppm') + suffix
     return pdfinfo, pdftoppm
+
+
+def check_output(*a):
+    from calibre.ebooks.pdf.pdftohtml import creationflags
+    return subprocess.check_output(list(a), creationflags=creationflags)
+
+
+def check_call(*a):
+    from calibre.ebooks.pdf.pdftohtml import creationflags
+    subprocess.check_call(list(a), creationflags=creationflags)
 
 
 def read_info(outputdir, get_cover):
@@ -37,7 +46,7 @@ def read_info(outputdir, get_cover):
     ans = {}
 
     try:
-        raw = subprocess.check_output([pdfinfo, '-enc', 'UTF-8', '-isodates', 'src.pdf'])
+        raw = check_output(pdfinfo, '-enc', 'UTF-8', '-isodates', 'src.pdf')
     except subprocess.CalledProcessError as e:
         prints(f'pdfinfo errored out with return code: {e.returncode}')
         return None
@@ -61,7 +70,7 @@ def read_info(outputdir, get_cover):
     # https://cgit.freedesktop.org/poppler/poppler/commit/?id=c91483aceb1b640771f572cb3df9ad707e5cad0d
     # we can no longer rely on it.
     try:
-        raw = subprocess.check_output([pdfinfo, '-meta', 'src.pdf']).strip()
+        raw = check_output(pdfinfo, '-meta', 'src.pdf').strip()
     except subprocess.CalledProcessError as e:
         prints(f'pdfinfo failed to read XML metadata with return code: {e.returncode}')
     else:
@@ -74,8 +83,8 @@ def read_info(outputdir, get_cover):
 
     if get_cover:
         try:
-            subprocess.check_call([pdftoppm, '-singlefile', '-jpeg', '-cropbox',
-                'src.pdf', 'cover'])
+            check_call(pdftoppm, '-singlefile', '-jpeg', '-cropbox',
+                'src.pdf', 'cover')
         except subprocess.CalledProcessError as e:
             prints(f'pdftoppm errored out with return code: {e.returncode}')
 
@@ -85,21 +94,17 @@ def read_info(outputdir, get_cover):
 def page_images(pdfpath, outputdir='.', first=1, last=1, image_format='jpeg', prefix='page-images'):
     pdftoppm = get_tools()[1]
     outputdir = os.path.abspath(outputdir)
-    args = {}
-    if iswindows:
-        args['creationflags'] = subprocess.HIGH_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW
     try:
-        subprocess.check_call([
+        check_call(
             pdftoppm, '-cropbox', '-' + image_format, '-f', str(first),
-            '-l', str(last), pdfpath, os.path.join(outputdir, prefix)
-        ], **args)
+            '-l', str(last), pdfpath, os.path.join(outputdir, prefix))
     except subprocess.CalledProcessError as e:
         raise ValueError(f'Failed to render PDF, pdftoppm errorcode: {e.returncode}')
 
 
 def is_pdf_encrypted(path_to_pdf):
     pdfinfo = get_tools()[0]
-    raw = subprocess.check_output([pdfinfo, path_to_pdf])
+    raw = check_output(pdfinfo, path_to_pdf)
     q = re.search(br'^Encrypted:\s*(\S+)', raw, flags=re.MULTILINE)
     if q is not None:
         return q.group(1) == b'yes'
@@ -163,9 +168,9 @@ def get_metadata(stream, cover=True):
 
     # Look for recognizable identifiers in the info dict, if they were not
     # found in the XMP metadata
-    for scheme, check_func in iteritems({'doi':check_doi, 'isbn':check_isbn}):
+    for scheme, check_func in {'doi':check_doi, 'isbn':check_isbn}.items():
         if scheme not in mi.get_identifiers():
-            for k, v in iteritems(info):
+            for k, v in info.items():
                 if k != 'xmp_metadata':
                     val = check_func(v)
                     if val:

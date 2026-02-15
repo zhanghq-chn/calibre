@@ -107,16 +107,15 @@ class Configure:
         configuration_dir = return_dict.get('configuration-directory')
         if configuration_dir is None:
             return_dict['configure-directory'] = None
+        elif not os.path.isdir(configuration_dir):
+            sys.stderr.write(f'The directory "{configuration_dir}" does not appear to be a directory.\n')
+            return 1
         else:
-            if not os.path.isdir(configuration_dir):
-                sys.stderr.write(f'The directory "{configuration_dir}" does not appear to be a directory.\n')
-                return 1
-            else:
-                return_dict['configure-directory'] = configuration_dir
+            return_dict['configure-directory'] = configuration_dir
         smart_output = return_dict.get('smart-output')
         if not smart_output:
             return_dict['smart-output'] = 0
-        elif smart_output != 'true' and smart_output != 'false':
+        elif smart_output not in {'true', 'false'}:
             sys.stderr.write('"smart-output" must be true or false.\n')
             return 1
         elif smart_output == 'false':
@@ -133,7 +132,7 @@ class Configure:
                 try:
                     int_num = int(return_dict[int_option])
                     return_dict[int_option] = int_num
-                except:
+                except Exception:
                     sys.stderr.write(f'"{int_option}" must be a number\n')
                     sys.stderr.write(f'You choose "{return_dict[int_option]}" ')
                     return 1
@@ -144,7 +143,7 @@ class Configure:
             value = return_dict.get(font)
             if not value:
                 return_dict[font] = 0
-            elif value != 'true' and value != 'false':
+            elif value not in {'true', 'false'}:
                 sys.stderr.write(
                     f'"{font}" must be true or false.\n')
             elif value == 'false':

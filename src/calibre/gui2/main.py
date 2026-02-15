@@ -9,11 +9,11 @@ import time
 import traceback
 
 import apsw
-from qt.core import QCoreApplication, QIcon, QObject, QTimer
+from qt.core import QCoreApplication, QIcon, QObject, QTimer, sip
 
-from calibre import force_unicode, prints
+from calibre import force_unicode, prints, timed_print
 from calibre.constants import DEBUG, MAIN_APP_UID, __appname__, filesystem_encoding, get_portable_base, islinux, ismacos, iswindows
-from calibre.gui2 import Application, choose_dir, error_dialog, gprefs, initialize_file_icon_provider, question_dialog, setup_gui_option_parser, timed_print
+from calibre.gui2 import Application, choose_dir, error_dialog, gprefs, initialize_file_icon_provider, question_dialog, setup_gui_option_parser
 from calibre.gui2.listener import send_message_in_process
 from calibre.gui2.main_window import option_parser as _option_parser
 from calibre.gui2.splash_screen import SplashScreen
@@ -83,7 +83,6 @@ def find_portable_library():
         lib = None
         q = os.path.basename(lp)
         for c in candidates:
-            c = c
             if c.lower() == q.lower():
                 lib = os.path.join(base, c)
                 break
@@ -115,7 +114,7 @@ def init_qt(args):
             prefs.set('library_path', os.path.abspath(libpath))
             prints('Using library at', prefs['library_path'])
     override = 'calibre-gui' if islinux else None
-    app = Application(args, override_program_name=override, windows_app_uid=MAIN_APP_UID)
+    app = Application(args, override_program_name=override, windows_app_uid=MAIN_APP_UID, should_handle_calibre_urls=True)
 
     app.file_event_hook = EventAccumulator()
     try:
@@ -177,7 +176,7 @@ def get_library_path(gui_runner):
     if not os.path.exists(library_path):
         try:
             os.makedirs(library_path)
-        except:
+        except Exception:
             gui_runner.show_error(_('Failed to create library'),
                     _('Failed to create calibre library at: %r.\n'
                       'You will be asked to choose a new library location.')%library_path,
@@ -297,7 +296,7 @@ class GuiRunner(QObject):
             try:
                 self.library_path = candidate
                 db = LibraryDatabase(candidate)
-            except:
+            except Exception:
                 self.show_error(_('Bad database location'), _(
                     'Bad database location %r. calibre will now quit.')%self.library_path,
                     det_msg=traceback.format_exc())
@@ -343,7 +342,7 @@ class GuiRunner(QObject):
                     return
                 if repair_library(self.library_path):
                     db = LibraryDatabase(self.library_path)
-        except:
+        except Exception:
             self.show_error(_('Bad database location'),
                     _('Bad database location %r. Will start with '
                     ' a new, empty calibre library')%self.library_path,
@@ -375,11 +374,10 @@ class GuiRunner(QObject):
 
 def run_in_debug_mode():
     import subprocess
-    import tempfile
 
+    from calibre.constants import cache_dir
     from calibre.debug import run_calibre_debug
-    fd, logpath = tempfile.mkstemp('.txt')
-    os.close(fd)
+    logpath = os.path.join(cache_dir(), 'calibre-debug-log.txt')
     run_calibre_debug(
         '--gui-debug', logpath, stdout=open(logpath, 'wb'),
         stderr=subprocess.STDOUT, stdin=open(os.devnull, 'rb'))
@@ -413,6 +411,7 @@ def run_gui_(opts, args, app, gui_debug=None):
         actions = tuple(Main.get_menubar_actions())
     runner = GuiRunner(opts, args, actions, app, gui_debug=gui_debug)
     ret = app.exec()
+    timed_print('Application event loop quit')
     if getattr(runner.main, 'run_wizard_b4_shutdown', False):
         from calibre.gui2.wizard import wizard
         wizard().exec()
@@ -420,12 +419,11 @@ def run_gui_(opts, args, app, gui_debug=None):
         after_quit_actions['restart_after_quit'] = True
         after_quit_actions['debug_on_restart'] = getattr(runner.main, 'debug_on_restart', False) or gui_debug is not None
         after_quit_actions['no_plugins_on_restart'] = getattr(runner.main, 'no_plugins_on_restart', False)
-    else:
-        if iswindows:
-            try:
-                runner.main.system_tray_icon.hide()
-            except:
-                pass
+    elif iswindows:
+        try:
+            runner.main.system_tray_icon.hide()
+        except Exception:
+            pass
     if getattr(runner.main, 'gui_debug', None) is not None:
         debugfile = runner.main.gui_debug
         from calibre.gui2 import open_local_file
@@ -439,6 +437,10 @@ def run_gui_(opts, args, app, gui_debug=None):
                 f.truncate()
                 f.write(raw)
         open_local_file(debugfile)
+    if runner.main:
+        sip.delete(runner.main)
+        runner.main = None
+    del runner
     return ret
 
 
@@ -449,26 +451,32 @@ class FailedToCommunicate(Exception):
     pass
 
 
-def send_message(msg, retry_communicate=False):
+def send_message(msg):
+    fail_err = None
     try:
         send_message_in_process(msg)
+        return True
     except Exception:
-        time.sleep(2)
-        try:
-            send_message_in_process(msg)
-        except Exception as err:
-            # can happen because the Qt local server pipe is shutdown before
-            # the single instance mutex is released
-            if retry_communicate:
-                raise FailedToCommunicate('retrying')
-            print(_('Failed to contact running instance of calibre'), file=sys.stderr, flush=True)
-            print(err, file=sys.stderr, flush=True)
-            if Application.instance():
-                error_dialog(None, _('Contacting calibre failed'), _(
-                    'Failed to contact running instance of calibre, try restarting calibre'),
-                    det_msg=str(err) + '\n\n' + repr(msg), show=True)
-            return False
-    return True
+        # can happen if Qt LocalServer has not yet started, typically happens on Windows
+        st = time.monotonic()
+        while time.monotonic() - st < 6:
+            try:
+                send_message_in_process(msg)
+                return True
+            except Exception as err:
+                fail_err = err
+                time.sleep(0.05)
+                with SingleInstance(singleinstance_name) as si:
+                    if si:
+                        raise SystemExit(_('Other instance of calibre shutdown'))
+
+    print(_('Failed to contact running instance of calibre'), file=sys.stderr, flush=True)
+    print(fail_err, file=sys.stderr, flush=True)
+    if Application.instance():
+        error_dialog(None, _('Contacting calibre failed'), _(
+            'Failed to contact running instance of calibre, try restarting calibre'),
+            det_msg=str(fail_err or '') + '\n\n' + repr(msg), show=True)
+    return False
 
 
 def shutdown_other():
@@ -482,7 +490,7 @@ def shutdown_other():
         raise SystemExit(_('Failed to shutdown running calibre instance'))
 
 
-def communicate(opts, args, retry_communicate=False):
+def communicate(opts, args):
     if opts.shutdown_running_calibre:
         shutdown_other()
     else:
@@ -492,7 +500,7 @@ def communicate(opts, args, retry_communicate=False):
             library_id = os.path.basename(opts.with_library).replace(' ', '_').encode('utf-8').hex()
             args.insert(1, 'calibre://switch-library/_hex_-' + library_id)
         import json
-        if not send_message(b'launched:'+as_bytes(json.dumps(args)), retry_communicate=retry_communicate):
+        if not send_message(b'launched:'+as_bytes(json.dumps(args))):
             raise SystemExit(_('Failed to contact running instance of calibre'))
     raise SystemExit(0)
 
@@ -542,24 +550,22 @@ def main(args=sys.argv):
         app, opts, args = init_qt(args)
     except AbortInit:
         return 1
-    try:
-        with SingleInstance(singleinstance_name) as si:
-            if si and opts.shutdown_running_calibre:
-                return 0
-            run_main(app, opts, args, gui_debug, si, retry_communicate=True)
-    except FailedToCommunicate:
-        with SingleInstance(singleinstance_name) as si:
-            if si and opts.shutdown_running_calibre:
-                return 0
-            run_main(app, opts, args, gui_debug, si, retry_communicate=False)
+    with SingleInstance(singleinstance_name) as si:
+        if si and opts.shutdown_running_calibre:
+            return 0
+        run_main(app, opts, args, gui_debug, si)
     if after_quit_actions['restart_after_quit']:
         restart_after_quit()
+    sip.delete(app)
+    del app
+    import gc
+    gc.collect(), gc.collect()
 
 
-def run_main(app, opts, args, gui_debug, si, retry_communicate=False):
+def run_main(app, opts, args, gui_debug, si):
     if si:
         return run_gui(opts, args, app, gui_debug=gui_debug)
-    communicate(opts, args, retry_communicate)
+    communicate(opts, args)
     return 0
 
 

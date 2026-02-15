@@ -17,7 +17,6 @@ from calibre.ebooks.oeb.base import XHTML, XHTML_NS, barename, namespace, urlnor
 from calibre.ebooks.oeb.stylizer import Stylizer
 from calibre.ebooks.oeb.transforms.flatcss import KeyMapper
 from calibre.utils.imghdr import identify
-from polyglot.builtins import string_or_bytes
 
 MBP_NS = 'http://mobipocket.com/ns/mbp'
 
@@ -156,7 +155,7 @@ class MobiMLizer:
         return self.fnums[self.fmap[ptsize]]
 
     def mobimlize_measure(self, ptsize):
-        if isinstance(ptsize, string_or_bytes):
+        if isinstance(ptsize, (str, bytes)):
             return ptsize
         embase = self.profile.fbase
         if round(ptsize) < embase:
@@ -199,7 +198,7 @@ class MobiMLizer:
             parent = bstate.nested[-1] if bstate.nested else bstate.body
             indent = istate.indent
             left = istate.left
-            if isinstance(indent, string_or_bytes):
+            if isinstance(indent, (str, bytes)):
                 indent = 0
             if indent < 0 and abs(indent) < left:
                 left += indent
@@ -252,7 +251,7 @@ class MobiMLizer:
             pstate = bstate.istate = None
             try:
                 etree.SubElement(para, XHTML(tag), attrib=istate.attrib)
-            except:
+            except Exception:
                 print('Invalid subelement:', para, tag, istate.attrib)
                 raise
         elif tag in TABLE_TAGS:
@@ -263,7 +262,7 @@ class MobiMLizer:
                 if tag == 'li':
                     try:
                         last = bstate.body[-1][-1]
-                    except:
+                    except Exception:
                         break
                     last.insert(0, anchor)
                     anchor.tail = last.text
@@ -320,7 +319,7 @@ class MobiMLizer:
         inline = bstate.inline
         content = self.preize_text(text, pre_wrap=istate.pre_wrap) if istate.preserve or istate.pre_wrap else [text]
         for item in content:
-            if isinstance(item, string_or_bytes):
+            if isinstance(item, (str, bytes)):
                 if len(inline) == 0:
                     inline.text = (inline.text or '') + item
                 else:
@@ -331,7 +330,7 @@ class MobiMLizer:
 
     def mobimlize_elem(self, elem, stylizer, bstate, istates,
             ignore_valign=False):
-        if not isinstance(elem.tag, string_or_bytes) \
+        if not isinstance(elem.tag, (str, bytes)) \
            or namespace(elem.tag) != XHTML_NS:
             return
         style = stylizer.style(elem)
@@ -357,7 +356,7 @@ class MobiMLizer:
         if tag == 'ol' and 'start' in elem.attrib:
             try:
                 istate.list_num = int(elem.attrib['start'])-1
-            except:
+            except Exception:
                 pass
         istates.append(istate)
         left = 0
@@ -461,7 +460,7 @@ class MobiMLizer:
                         try:
                             pixs = round(float(value) /
                                 (72/self.profile.dpi))
-                        except:
+                        except Exception:
                             continue
                         result = str(pixs)
                     istate.attrib[prop] = result
@@ -469,7 +468,7 @@ class MobiMLizer:
                 href = self.current_spine_item.abshref(elem.attrib['src'])
                 try:
                     item = self.oeb.manifest.hrefs[urlnormalize(href)]
-                except:
+                except Exception:
                     self.oeb.logger.warn('Failed to find image:',
                             href)
                 else:
@@ -487,13 +486,13 @@ class MobiMLizer:
                             if 'width' not in istate.attrib:
                                 try:
                                     width = int(istate.attrib['height'])*ar
-                                except:
+                                except Exception:
                                     pass
                                 istate.attrib['width'] = str(int(width))
                             else:
                                 try:
                                     height = int(istate.attrib['width'])/ar
-                                except:
+                                except Exception:
                                     pass
                                 istate.attrib['height'] = str(int(height))
                         item.unload_data_from_memory()
@@ -593,7 +592,7 @@ class MobiMLizer:
                 try:
                     value = int(elem.attrib['value'])
                     istates[-2].list_num = value - 1
-                except:
+                except Exception:
                     pass
             self.mobimlize_content(tag, text, bstate, istates)
         for child in elem:

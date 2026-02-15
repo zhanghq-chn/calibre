@@ -55,8 +55,8 @@ class Container(dict):
                 # Some Kobo epubs have multiple rootfile entries, but only one
                 # exists.  Ignore the ones that don't exist.
                 continue
-
-            self[mt] = fp
+            if mt not in self:
+                self[mt] = fp
 
 
 class OCF:
@@ -97,7 +97,7 @@ class OCFReader(OCF):
             mimetype = self.read_bytes('mimetype').decode('utf-8').rstrip()
             if mimetype != OCF.MIMETYPE:
                 print('WARNING: Invalid mimetype declaration', mimetype)
-        except:
+        except Exception:
             print("WARNING: Epub doesn't contain a valid mimetype declaration")
 
         try:

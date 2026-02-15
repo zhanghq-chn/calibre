@@ -75,7 +75,6 @@ from calibre.utils.date import (
 from calibre.utils.filenames import make_long_path_useable
 from calibre.utils.icu import sort_key, strcmp
 from calibre.utils.localization import ngettext
-from polyglot.builtins import iteritems
 
 
 def save_dialog(parent, title, msg, det_msg=''):
@@ -318,7 +317,7 @@ class TitleSortEdit(TitleEdit, ToMetadataMixin, LineEditIndicators):
     def book_lang(self):
         try:
             book_lang = self.languages_edit.lang_codes[0]
-        except:
+        except Exception:
             book_lang = None
         return book_lang
 
@@ -344,15 +343,15 @@ class TitleSortEdit(TitleEdit, ToMetadataMixin, LineEditIndicators):
     def break_cycles(self):
         try:
             self.title_edit.textChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.textChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.autogen_button.clicked.disconnect()
-        except:
+        except Exception:
             pass
 
 # }}}
@@ -470,7 +469,7 @@ class AuthorsEdit(EditWithComplete, ToMetadataMixin):
         self.db = self.dialog = None
         try:
             self.manage_authors_signal.triggered.disconnect()
-        except:
+        except Exception:
             pass
 
 
@@ -478,9 +477,9 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin, LineEditIndicators):
 
     TOOLTIP = _('Specify how the author(s) of this book should be sorted. '
             'For example Charles Dickens should be sorted as Dickens, '
-            'Charles.\nIf the box is colored green, then text matches '
-            "the individual author's sort strings. If it is colored "
-            'red, then the authors and this text do not match.')
+            'Charles.\nIf the box has a tick mark, then text matches '
+            "the individual author's sort strings. If it has a cross mark, "
+            'then the authors and this text do not match.')
     LABEL = _('Author s&ort:')
     FIELD_NAME = 'author_sort'
     data_changed = pyqtSignal()
@@ -600,23 +599,23 @@ class AuthorSortEdit(EnLineEdit, ToMetadataMixin, LineEditIndicators):
         self.db = None
         try:
             self.authors_edit.editTextChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.textChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.autogen_button.clicked.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.copy_a_to_as_action.triggered.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.copy_as_to_a_action.triggered.disconnect()
-        except:
+        except Exception:
             pass
         self.authors_edit = None
 
@@ -763,7 +762,7 @@ class SeriesIndexEdit(make_undoable(QDoubleSpinBox), ToMetadataMixin):
                         ns = self.db.get_next_series_num_for(series)
                     self.current_val = ns
                     self.original_series_name = series
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
 
@@ -773,15 +772,15 @@ class SeriesIndexEdit(make_undoable(QDoubleSpinBox), ToMetadataMixin):
     def break_cycles(self):
         try:
             self.series_edit.currentIndexChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.series_edit.editTextChanged.disconnect()
-        except:
+        except Exception:
             pass
         try:
             self.series_edit.lineEdit().editingFinished.disconnect()
-        except:
+        except Exception:
             pass
         self.db = self.series_edit = self.dialog = None
 
@@ -1158,7 +1157,7 @@ class FormatsManager(QWidget):
                 with stream:
                     mi = get_metadata(stream, ext)
                 return mi, ext
-            except:
+            except Exception:
                 import traceback
                 error_dialog(self, _('Could not read metadata'),
                             _('Could not read metadata from %s format')%ext.upper(),
@@ -1174,7 +1173,7 @@ class FormatsManager(QWidget):
         for name in self.temp_files:
             try:
                 os.remove(name)
-            except:
+            except Exception:
                 pass
         self.temp_files = []
 # }}}
@@ -1424,7 +1423,7 @@ class Cover(ImageView):  # {{{
     def break_cycles(self):
         try:
             self.cover_changed.disconnect()
-        except:
+        except Exception:
             pass
         self.dialog = self._cdata = self.current_val = self.original_val = None
 
@@ -1748,7 +1747,7 @@ class IdentifiersEdit(QLineEdit, ToMetadataMixin, LineEditIndicators):
                 v = check_isbn(k)
                 if v is not None:
                     val[k] = v
-        ids = sorted(iteritems(val), key=keygen)
+        ids = sorted(val.items(), key=keygen)
         txt = ', '.join([f'{k.lower()}:{vl}' for k, vl in ids])
         if self.allow_undo:
             self.selectAll(), self.insert(txt.strip())

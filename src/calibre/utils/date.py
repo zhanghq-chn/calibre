@@ -14,7 +14,6 @@ from calibre import strftime
 from calibre.constants import ismacos, iswindows, preferred_encoding
 from calibre.utils.iso8601 import UNDEFINED_DATE, local_tz, utc_tz
 from calibre.utils.localization import lcdata
-from polyglot.builtins import native_string_type
 
 _utc_tz = utc_tz
 _local_tz = local_tz
@@ -28,7 +27,7 @@ if iswindows:
     try:
         ctypes.windll.kernel32.GetLocaleInfoA(LOCALE_USER_DEFAULT, LOCALE_SSHORTDATE, buf, 255)
         parse_date_day_first = buf.value.index(b'd') < buf.value.index(b'M')
-    except:
+    except Exception:
         parse_date_day_first = False
     del ctypes, LOCALE_SSHORTDATE, buf, LOCALE_USER_DEFAULT
 elif ismacos:
@@ -36,14 +35,14 @@ elif ismacos:
         from calibre_extensions.usbobserver import date_format
         date_fmt = date_format()
         parse_date_day_first = date_fmt.index('d') < date_fmt.index('M')
-    except:
+    except Exception:
         parse_date_day_first = False
 else:
     try:
         def first_index(raw, queries):
             for q in queries:
                 try:
-                    return raw.index(native_string_type(q))
+                    return raw.index(str(q))
                 except ValueError:
                     pass
             return -1
@@ -52,7 +51,7 @@ else:
         raw = locale.nl_langinfo(locale.D_FMT)
         parse_date_day_first = first_index(raw, ('%d', '%a', '%A')) < first_index(raw, ('%m', '%b', '%B'))
         del raw, first_index
-    except:
+    except Exception:
         parse_date_day_first = False
 
 DEFAULT_DATE = datetime(2000,1,1, tzinfo=utc_tz)
@@ -213,13 +212,12 @@ def fromordinal(day, as_utc=True):
 
 def isoformat(date_time, assume_utc=False, as_utc=True, sep='T'):
     if not hasattr(date_time, 'tzinfo'):
-        return str(date_time.isoformat())
+        return date_time.isoformat()
     if date_time.tzinfo is None:
         date_time = date_time.replace(tzinfo=_utc_tz if assume_utc else
                 _local_tz)
     date_time = date_time.astimezone(_utc_tz if as_utc else _local_tz)
-    # native_string_type(sep) because isoformat barfs with unicode sep on python 2.x
-    return str(date_time.isoformat(native_string_type(sep)))
+    return date_time.isoformat(sep)
 
 
 def internal_iso_format_string():

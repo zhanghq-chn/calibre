@@ -11,10 +11,9 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 
-from setup import Command, __version__, installer_names, require_clean_git, require_git_master
+from setup import Command, __version__, installer_names, manual_build_dir, require_clean_git, require_git_master
 from setup.parallel_build import create_job, parallel_build
 
 
@@ -68,6 +67,7 @@ class Stage2(Command):
             installer = self.j(self.d(self.SRC), installer)
             if not os.path.exists(installer) or os.path.getsize(installer) < 10000:
                 raise SystemExit(f'The installer {os.path.basename(installer)} does not exist')
+            os.chmod(installer, 0o644)
 
 
 class Stage3(Command):
@@ -91,6 +91,12 @@ class Stage5(Command):
         subprocess.check_call('rm -rf build/* dist/*', shell=True)
 
 
+def require_hsm_for_signing():
+    cp = subprocess.run(['pkcs11-tool', '-L'], stdout=subprocess.DEVNULL)
+    if cp.returncode != 0:
+        raise SystemExit('Attach the HSM for authenticode signing first')
+
+
 class Publish(Command):
 
     description = 'Publish a new calibre release'
@@ -105,6 +111,7 @@ class Publish(Command):
     def pre_sub_commands(self, opts):
         require_git_master()
         require_clean_git()
+        require_hsm_for_signing()
         version = tuple(map(int, __version__.split('.')))  # noqa: RUF048
         if version[2] > 99:
             raise SystemExit(f'The version number {__version__} indicates a preview release, did you mean to run ./setup.py publish_preview?')
@@ -125,6 +132,7 @@ class PublishBetas(Command):
 
     def pre_sub_commands(self, opts):
         require_clean_git()
+        require_hsm_for_signing()
         # require_git_master()
 
     def run(self, opts):
@@ -144,6 +152,7 @@ class PublishPreview(Command):
             raise SystemExit('Must set calibre version to have patch level greater than 100')
         require_clean_git()
         require_git_master()
+        require_hsm_for_signing()
 
     def run(self, opts):
         dist = self.a(self.j(self.d(self.SRC), 'dist'))
@@ -180,7 +189,7 @@ class Manual(Command):
         )
 
     def run(self, opts):
-        tdir = self.j(tempfile.gettempdir(), 'user-manual-build')
+        tdir = manual_build_dir()
         if os.path.exists(tdir):
             shutil.rmtree(tdir)
         os.mkdir(tdir)
@@ -234,7 +243,7 @@ class Manual(Command):
 
     def serve_manual(self, root):
         os.chdir(root)
-        from polyglot.http_server import HTTPServer, SimpleHTTPRequestHandler
+        from http.server import HTTPServer, SimpleHTTPRequestHandler
         HandlerClass = SimpleHTTPRequestHandler
         ServerClass = HTTPServer
         Protocol = 'HTTP/1.0'
@@ -289,6 +298,7 @@ class ManPages(Command):
         base = self.j(self.d(self.SRC), 'manual')
         languages = set(available_translations())
         languages.discard('ta')  # Tamil translatins are completely borked break sphinx
+        languages.discard('id')  # Indonesian man page fails to build
         languages = ['en'] + list(languages - {'en', 'en_GB'})
         os.environ['ALL_USER_MANUAL_LANGUAGES'] = ' '.join(languages)
         try:

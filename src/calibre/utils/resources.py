@@ -6,11 +6,11 @@ __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
+import builtins
 import os
 import sys
 
 from calibre import config_dir
-from polyglot.builtins import builtins
 
 user_dir = os.path.join(config_dir, 'resources')
 
@@ -25,7 +25,7 @@ class PathResolver:
             try:
                 return os.path.exists(path) and os.path.isdir(path) and \
                        os.listdir(path)
-            except:
+            except Exception:
                 pass
             return False
 

@@ -10,6 +10,7 @@ Job management.
 '''
 
 import time
+from queue import Empty, Queue
 
 from qt.core import (
     QAbstractItemDelegate,
@@ -59,7 +60,6 @@ from calibre.utils.ipc.job import ParallelJob
 from calibre.utils.ipc.server import Server
 from calibre.utils.localization import ngettext
 from calibre.utils.search_query_parser import ParseException, SearchQueryParser
-from polyglot.queue import Empty, Queue
 
 
 class AdaptSQP(SearchQueryParser):
@@ -166,7 +166,7 @@ class JobManager(QAbstractTableModel, AdaptSQP):  # {{{
                 if job.killed or job.failed:
                     return self.error_icon
                 return self.done_icon
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
         return None
@@ -229,7 +229,7 @@ class JobManager(QAbstractTableModel, AdaptSQP):  # {{{
         # Kill parallel jobs that have gone on too long
         try:
             wmax_time = gprefs['worker_max_time'] * 60
-        except:
+        except Exception:
             wmax_time = 0
 
         if wmax_time > 0:
@@ -398,7 +398,7 @@ class FilterModel(QSortFilterProxyModel):  # {{{
         m = self.sourceModel()
         try:
             job = m.row_to_job(source_row)
-        except:
+        except Exception:
             return False
         return not getattr(job, 'hidden_in_gui', False)
 

@@ -20,7 +20,6 @@ from calibre.library.prefs import DBPrefs
 from calibre.ptempfile import TemporaryDirectory
 from calibre.utils.date import utcfromtimestamp
 from calibre.utils.localization import _
-from polyglot.builtins import iteritems
 
 NON_EBOOK_EXTENSIONS = frozenset([
         'jpg', 'jpeg', 'gif', 'png', 'bmp',
@@ -115,7 +114,7 @@ class Restore(Thread):
                 if self.successes == 0 and len(self.dirs) > 0:
                     raise Exception('Something bad happened')
                 self.replace_db()
-        except:
+        except Exception:
             self.tb = traceback.format_exc()
 
     def load_preferences(self):
@@ -138,7 +137,7 @@ class Restore(Thread):
                 return True
             self.progress_callback(_('Finished restoring preferences'), 1)
             return False
-        except:
+        except Exception:
             traceback.print_exc()
             self.progress_callback(None, 1)
             self.progress_callback(_('Restoring preferences and column metadata failed'), 0)
@@ -158,7 +157,7 @@ class Restore(Thread):
             dirpath, filenames, book_id = x
             try:
                 self.process_dir(dirpath, filenames, book_id)
-            except:
+            except Exception:
                 self.failed_dirs.append((dirpath, traceback.format_exc()))
             self.progress_callback(_('Processed') + ' ' + dirpath, i+1)
 
@@ -197,7 +196,7 @@ class Restore(Thread):
             self.mismatched_dirs.append(dirpath)
 
         alm = mi.get('author_link_map', {})
-        for author, link in iteritems(alm):
+        for author, link in alm.items():
             existing_link, timestamp = self.authors_links.get(author, (None, None))
             if existing_link is None or (existing_link != link and timestamp < mi.timestamp):
                 self.authors_links[author] = (link, mi.timestamp)
@@ -244,7 +243,7 @@ class Restore(Thread):
         for i, book in enumerate(self.books):
             try:
                 self.restore_book(book, db)
-            except:
+            except Exception:
                 self.failed_restores.append((book, traceback.format_exc()))
             self.progress_callback(book['mi'].title, i+1)
 

@@ -1,5 +1,8 @@
 #define UNICODE
 #define PY_SSIZE_T_CLEAN
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
 
 #include <Python.h>
 #include <datetime.h>
@@ -543,7 +546,7 @@ count_chars(const char *tag_name, Py_ssize_t tag_len, udata *text, udata *tail) 
         if (tag_len < sizeof(ltagname)) {
             memcpy(ltagname, tag_name, tag_len);
             for (size_t i = 0; i < tag_len; i++) if ('A' <= ltagname[i] && ltagname[i] <= 'Z') ltagname[i] += 32;
-#define EQ(x) (memcmp(ltagname, #x, tag_len) == 0)
+#define EQ(x) (tag_len + 1 == sizeof(#x) && memcmp(ltagname, #x, tag_len) == 0)
             switch(ltagname[0]) {
                 case 's':
                     if (EQ(script) || EQ(style)) is_ignored_tag = 1;
@@ -557,6 +560,9 @@ count_chars(const char *tag_name, Py_ssize_t tag_len, udata *text, udata *tail) 
                     break;
                 case 'i':
                     if (EQ(img)) ans += 1000;
+                    break;
+                case 'v':
+                    if (EQ(video)) ans += 2000;
                     break;
             }
         }
@@ -748,11 +754,7 @@ pread_all(PyObject *self, PyObject *args) {
             break;
         }
 #else
-#ifdef __linux__
-        ssize_t nr = pread64(fd, buf + pos, n - pos, offset);
-#else
         ssize_t nr = pread(fd, buf + pos, n - pos, offset);
-#endif
         if (nr < 0) {
             if (errno == EINTR || errno == EAGAIN) continue;
             saved_errno = errno;

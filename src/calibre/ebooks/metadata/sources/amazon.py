@@ -115,7 +115,7 @@ def parse_details_page(url, log, timeout, browser, domain):
                 log.error('URL not found: %r' % url)
                 raise UrlNotFound(url)
             attr = getattr(e, 'args', [None])
-            attr = attr if attr else [None]
+            attr = attr or [None]
             if isinstance(attr[0], socket.timeout):
                 msg = 'Details page timed out. Try again later.'
                 log.error(msg)
@@ -328,7 +328,8 @@ class Worker(Thread):  # Get details {{{
             '''
         self.pubdate_xpath = '''
             descendant::*[starts-with(text(), "Publication Date:") or \
-                    starts-with(text(), "Audible.com Release Date:")]
+                starts-with(text(), "Audible.com Release Date:") or \
+                starts-with(text(), "発売日:")]
         '''
         self.publisher_names = {'Publisher', 'Uitgever', 'Verlag', 'Utgivare', 'Herausgeber',
                                 'Editore', 'Editeur', 'Éditeur', 'Editor', 'Editora', '出版社'}
@@ -410,7 +411,7 @@ class Worker(Thread):  # Get details {{{
     def run(self):
         try:
             self.get_details()
-        except:
+        except Exception:
             self.log.exception('get_details failed for url: %r' % self.url)
 
     def get_details(self):
@@ -439,13 +440,13 @@ class Worker(Thread):  # Get details {{{
 
         try:
             title = self.parse_title(root)
-        except:
+        except Exception:
             self.log.exception('Error parsing title for url: %r' % self.url)
             title = None
 
         try:
             authors = self.parse_authors(root)
-        except:
+        except Exception:
             self.log.exception('Error parsing authors for url: %r' % self.url)
             authors = []
 
@@ -463,12 +464,12 @@ class Worker(Thread):  # Get details {{{
 
         try:
             mi.rating = self.parse_rating(root)
-        except:
+        except Exception:
             self.log.exception('Error parsing ratings for url: %r' % self.url)
 
         try:
             mi.comments = self.parse_comments(root, raw)
-        except:
+        except Exception:
             self.log.exception('Error parsing comments for url: %r' % self.url)
 
         try:
@@ -477,17 +478,17 @@ class Worker(Thread):  # Get details {{{
                 mi.series, mi.series_index = series, series_index
             elif self.testing:
                 mi.series, mi.series_index = 'Dummy series for testing', 1
-        except:
+        except Exception:
             self.log.exception('Error parsing series for url: %r' % self.url)
 
         try:
             mi.tags = self.parse_tags(root)
-        except:
+        except Exception:
             self.log.exception('Error parsing tags for url: %r' % self.url)
 
         try:
             self.cover_url = self.parse_cover(root, raw)
-        except:
+        except Exception:
             self.log.exception('Error parsing cover for url: %r' % self.url)
         if self.cover_url_processor is not None and self.cover_url and self.cover_url.startswith('/'):
             self.cover_url = self.cover_url_processor(self.cover_url)
@@ -503,12 +504,18 @@ class Worker(Thread):  # Get details {{{
         elif non_hero:
             try:
                 self.parse_new_details(root, mi, non_hero[0])
-            except:
+            except Exception:
                 self.log.exception(
                     'Failed to parse new-style book details section')
         elif feature_and_detail_bullets:
             self.parse_detail_bullets(root, mi, feature_and_detail_bullets[0], ul_selector='ul')
-
+        elif root.xpath('//*[@data-rpi-attribute-name="book_details-publication_date"]'):
+            # New Amazon "rich_product_information" carousel (RPI)
+            node = root.xpath('//*[@data-rpi-attribute-name="book_details-publication_date"]')[0]
+            label = node.xpath('.//*[contains(@class,"rpi-attribute-label")]//span')
+            value = node.xpath('.//*[contains(@class,"rpi-attribute-value")]//span')
+            if label and value:
+                self.parse_detail_cells(mi, label[0], value[0])
         else:
             pd = root.xpath(self.pd_xpath)
             if pd:
@@ -518,19 +525,19 @@ class Worker(Thread):  # Get details {{{
                     isbn = self.parse_isbn(pd)
                     if isbn:
                         self.isbn = mi.isbn = isbn
-                except:
+                except Exception:
                     self.log.exception(
                         'Error parsing ISBN for url: %r' % self.url)
 
                 try:
                     mi.publisher = self.parse_publisher(pd)
-                except:
+                except Exception:
                     self.log.exception(
                         'Error parsing publisher for url: %r' % self.url)
 
                 try:
                     mi.pubdate = self.parse_pubdate(pd)
-                except:
+                except Exception:
                     self.log.exception(
                         'Error parsing publish date for url: %r' % self.url)
 
@@ -538,7 +545,7 @@ class Worker(Thread):  # Get details {{{
                     lang = self.parse_language(pd)
                     if lang:
                         mi.language = lang
-                except:
+                except Exception:
                     self.log.exception(
                         'Error parsing language for url: %r' % self.url)
 
@@ -805,18 +812,34 @@ class Worker(Thread):  # Get details {{{
     def parse_series(self, root):
         ans = (None, None)
 
-        # This is found on kindle pages for books on amazon.com
+        # This is found on kindle pages for books on amazon.* (including amazon.co.jp)
         series = root.xpath('//*[@id="rpi-attribute-book_details-series"]')
         if series:
             spans = series[0].xpath('descendant::span')
             if spans:
-                texts = [self.tostring(x, encoding='unicode', method='text', with_tail=False).strip() for x in spans]
+                texts = [self.tostring(x, encoding='unicode', method='text', with_tail=False).strip()
+                         for x in spans]
                 texts = list(filter(None, texts))
                 if len(texts) == 2:
-                    idxinfo, series = texts
-                    m = re.search(r'[0-9.]+', idxinfo.strip())
+                    idxinfo, series_name = texts
+                    idxinfo = idxinfo.strip()
+
+                    # Try Japanese pattern like: "全5巻中第1巻", "全3冊中第2冊"
+                    m = re.search(r'全\s*[0-9.]+\s*(?:巻|冊)中第\s*([0-9.]+)\s*(?:巻|冊)', idxinfo)
                     if m is not None:
-                        ans = series, float(m.group())
+                        ans = (series_name, float(m.group(1)))
+                        return ans
+
+                    # Newer JP pattern: "全24冊中4番目の本" (no 第 / no 冊 after index)
+                    m = re.search(r'全\s*[0-9.]+\s*(?:巻|冊)中\s*([0-9.]+)\s*番目', idxinfo)
+                    if m is not None:
+                        ans = (series_name, float(m.group(1)))
+                        return ans
+
+                    # Safer fallback: if there are multiple numbers, the LAST one is usually the index
+                    nums = re.findall(r'[0-9.]+', idxinfo)
+                    if nums:
+                        ans = (series_name, float(nums[-1]))
                         return ans
 
         # This is found on the paperback/hardback pages for books on amazon.com
@@ -843,7 +866,7 @@ class Worker(Thread):  # Get details {{{
                 if a:
                     raw = self.tostring(a[0], encoding='unicode', method='text', with_tail=False)
                     if self.domain == 'jp':
-                        m = re.search(r'(?P<index>[0-9.]+)\s*(?:巻|冊)\s*\(全\s*([0-9.]+)\s*(?:巻|冊)\):\s*(?P<series>.+)', raw.strip())
+                        m = re.search(r'全\s*[0-9.]+\s*(?:巻|冊)中第\s*(?P<index>[0-9.]+)\s*(?:巻|冊)\s*:\s*(?P<series>.+)', raw.strip())
                     else:
                         m = re.search(r'(?:Book|Libro|Buch)\s+(?P<index>[0-9.]+)\s+(?:of|de|von)\s+([0-9.]+)\s*:\s*(?P<series>.+)', raw.strip())
                     if m is not None:
@@ -1025,13 +1048,13 @@ class Worker(Thread):  # Get details {{{
                 from calibre.utils.date import parse_only_date
                 date = self.delocalize_datestr(date)
                 mi.pubdate = parse_only_date(date, assume_utc=True)
-            except:
+            except Exception:
                 self.log.exception('Failed to parse pubdate: %s' % val)
         elif name in {'ISBN', 'ISBN-10', 'ISBN-13'}:
             ans = check_isbn(val)
             if ans:
                 self.isbn = mi.isbn = ans
-        elif name in {'Publication date'}:
+        elif name in {'Publication date', '発売日'}:
             from calibre.utils.date import parse_only_date
             date = self.delocalize_datestr(val)
             mi.pubdate = parse_only_date(date, assume_utc=True)
@@ -1090,7 +1113,7 @@ class Worker(Thread):  # Get details {{{
 class Amazon(Source):
 
     name = 'Amazon.com'
-    version = (1, 3, 12)
+    version = (1, 3, 17)
     minimum_calibre_version = (2, 82, 0)
     description = _('Downloads metadata and covers from Amazon')
 
@@ -1515,7 +1538,7 @@ class Amazon(Source):
                 log.error('Query malformed: %r' % query)
                 raise SearchFailed()
             attr = getattr(e, 'args', [None])
-            attr = attr if attr else [None]
+            attr = attr or [None]
             if isinstance(attr[0], socket.timeout):
                 msg = _('Amazon timed out. Try again later.')
                 log.error(msg)
@@ -1568,8 +1591,8 @@ class Amazon(Source):
         elif server == 'google':
             urlproc, sfunc = se.google_url_processor, se.google_search
         else:  # auto or unknown
-            # urlproc, sfunc = se.google_url_processor, se.google_search
-            urlproc, sfunc = se.bing_url_processor, se.bing_search
+            urlproc, sfunc = se.google_url_processor, se.google_search
+            # urlproc, sfunc = se.bing_url_processor, se.bing_search
         try:
             results, qurl = sfunc(terms, site, log=log, br=br, timeout=timeout)
         except HTTPError as err:
@@ -1734,8 +1757,6 @@ class Amazon(Source):
                           identifiers=identifiers)
             if abort.is_set():
                 return
-            if abort.is_set():
-                return
             results = []
             while True:
                 try:
@@ -1764,7 +1785,7 @@ class Amazon(Source):
             cdata = br.open_novisit(
                 cached_url, timeout=timeout).read()
             result_queue.put((self, cdata))
-        except:
+        except Exception:
             log.exception('Failed to download cover from:', cached_url)
     # }}}
 

@@ -25,7 +25,6 @@ from calibre.devices.errors import DeviceError
 from calibre.devices.interface import FAKE_DEVICE_SERIAL, DevicePlugin, ModelMetadata
 from calibre.devices.usbms.deviceconfig import DeviceConfig
 from calibre.utils.filenames import ascii_filename as sanitize
-from polyglot.builtins import iteritems, string_or_bytes
 
 if ismacos:
     osx_sanitize_name_pat = re.compile(r'[.-]')
@@ -347,8 +346,7 @@ class Device(DeviceConfig, DevicePlugin):
     def osx_run_mount(cls):
         for i in range(3):
             try:
-                return subprocess.Popen('mount',
-                                    stdout=subprocess.PIPE).communicate()[0]
+                return subprocess.Popen('mount', stdout=subprocess.PIPE).communicate()[0].decode('utf-8', 'replace')
             except OSError:  # Probably an interrupted system call
                 if i == 2:
                     raise
@@ -445,7 +443,7 @@ class Device(DeviceConfig, DevicePlugin):
                 dev_node = f'/dev/{dev_node}'
                 if dev_node not in mount_map:
                     mount_map[dev_node] = val
-        drives = {k: mount_map.get(v) for k, v in iteritems(drives)}
+        drives = {k: mount_map.get(v) for k, v in drives.items()}
         if is_debugging():
             print()
             from pprint import pprint
@@ -551,7 +549,7 @@ class Device(DeviceConfig, DevicePlugin):
                             ok[node] = True
                         else:
                             ok[node] = False
-                    except:
+                    except Exception:
                         ok[node] = False
                     if is_debugging() and not ok[node]:
                         print(f'\nIgnoring the node: {node} as could not read size from: {sz}')
@@ -581,7 +579,7 @@ class Device(DeviceConfig, DevicePlugin):
             try:
                 with open(sz, 'rb') as szf:
                     sz = int(szf.read().decode('utf-8'))
-            except:
+            except Exception:
                 continue
             if sz > 0:
                 nodes.append((x.split('/')[-1], sz))
@@ -603,7 +601,7 @@ class Device(DeviceConfig, DevicePlugin):
                     from calibre.devices.udisks import mount
                     mount(node)
                     return 0
-                except:
+                except Exception:
                     print('Udisks mount call failed:')
                     import traceback
                     traceback.print_exc()
@@ -659,12 +657,12 @@ class Device(DeviceConfig, DevicePlugin):
             try:
                 with open(path, 'wb'):
                     ro = False
-            except:
+            except Exception:
                 pass
             else:
                 try:
                     os.remove(path)
-                except:
+                except Exception:
                     pass
             if is_debugging() and ro:
                 print('\nThe mountpoint', mp, 'is readonly, ignoring it')
@@ -890,7 +888,7 @@ class Device(DeviceConfig, DevicePlugin):
             if x is not None:
                 try:
                     subprocess.Popen(self.OSX_EJECT_COMMAND + [x])
-                except:
+                except Exception:
                     pass
 
     def eject_linux(self):
@@ -899,7 +897,7 @@ class Device(DeviceConfig, DevicePlugin):
         for d in drives:
             try:
                 umount(d)
-            except:
+            except Exception:
                 pass
         for d in drives:
             try:
@@ -919,22 +917,22 @@ class Device(DeviceConfig, DevicePlugin):
         if islinux:
             try:
                 self.eject_linux()
-            except:
+            except Exception:
                 pass
         if isfreebsd:
             try:
                 self.eject_freebsd()
-            except:
+            except Exception:
                 pass
         if iswindows:
             try:
                 self.eject_windows()
-            except:
+            except Exception:
                 pass
         if ismacos:
             try:
                 self.eject_osx()
-            except:
+            except Exception:
                 pass
         self._main_prefix = self._card_a_prefix = self._card_b_prefix = None
         self.on_device_close()
@@ -946,7 +944,7 @@ class Device(DeviceConfig, DevicePlugin):
         if islinux:
             try:
                 self.linux_post_yank()
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
         self._main_prefix = self._card_a_prefix = self._card_b_prefix = None
@@ -966,7 +964,7 @@ class Device(DeviceConfig, DevicePlugin):
         sanity_check(on_card, files, self.card_prefix(), self.free_space())
 
         def get_dest_dir(prefix, candidates):
-            if isinstance(candidates, string_or_bytes):
+            if isinstance(candidates, (str, bytes)):
                 candidates = [candidates]
             if not candidates:
                 candidates = ['']

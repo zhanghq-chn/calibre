@@ -15,6 +15,7 @@ from collections import defaultdict
 from io import BytesIO
 from itertools import count
 from math import floor
+from urllib.parse import urlparse
 
 from css_parser import getUrls, replaceUrls
 
@@ -50,13 +51,11 @@ from calibre.ebooks.oeb.polish.parsing import decode_xml
 from calibre.ebooks.oeb.polish.parsing import parse as parse_html_tweak
 from calibre.ebooks.oeb.polish.utils import OEB_FONTS, CommentFinder, PositionFinder, adjust_mime_for_epub, guess_type, insert_self_closing, parse_css
 from calibre.ptempfile import PersistentTemporaryDirectory, PersistentTemporaryFile, TemporaryDirectory
-from calibre.utils.filenames import hardlink_file, nlinks_file, retry_on_fail
+from calibre.utils.filenames import hardlink_file, make_long_path_useable, nlinks_file, retry_on_fail
 from calibre.utils.ipc.simple_worker import WorkerError, fork_job
 from calibre.utils.logging import default_log
 from calibre.utils.xml_parse import safe_xml_fromstring
 from calibre.utils.zipfile import ZipFile
-from polyglot.builtins import iteritems
-from polyglot.urllib import urlparse
 
 exists, join, relpath = os.path.exists, os.path.join, os.path.relpath
 OPF_NAMESPACES = {'opf':OPF2_NS, 'dc':DC11_NS}
@@ -81,7 +80,7 @@ def clone_dir(src, dest):
         else:
             try:
                 hardlink_file(spath, dpath)
-            except:
+            except Exception:
                 shutil.copy2(spath, dpath)
 
 
@@ -548,10 +547,16 @@ class Container(ContainerBase):  # {{{
         return name and name in self.name_path_map
 
     def has_name_and_is_not_empty(self, name):
-        if not self.has_name(name):
+        path = self.name_path_map.get(name)
+        if not path:
             return False
         try:
-            return os.path.getsize(self.name_path_map[name]) > 0
+            if (sz := os.path.getsize(path)) == 0:
+                # this can happen when the directory entry is not flushed (which happens during fast EPUB extraction), so
+                # open the file and check to be sure.
+                with open(path) as f:
+                    sz = f.seek(0, os.SEEK_END)
+            return sz > 0
         except OSError:
             return False
 
@@ -681,7 +686,7 @@ class Container(ContainerBase):  # {{{
         for item in self.opf_xpath('//opf:manifest/opf:item[@href and @media-type]'):
             ans[item.get('media-type').lower()].append(self.href_to_name(
                 item.get('href'), self.opf_name))
-        return {mt:tuple(v) for mt, v in iteritems(ans)}
+        return {mt:tuple(v) for mt, v in ans.items()}
 
     def manifest_items_with_property(self, property_name):
         ' All manifest items that have the specified property '
@@ -699,7 +704,7 @@ class Container(ContainerBase):  # {{{
             predicate = predicate.__eq__
         elif hasattr(predicate, '__contains__'):
             predicate = predicate.__contains__
-        for mt, names in iteritems(self.manifest_type_map):
+        for mt, names in self.manifest_type_map.items():
             if predicate(mt):
                 yield from names
 
@@ -727,11 +732,10 @@ class Container(ContainerBase):  # {{{
                             item.set('properties', ' '.join(props))
                         else:
                             del item.attrib['properties']
-                else:
-                    if name == iname:
-                        added_names.append(iname)
-                        props.append(prop)
-                        item.set('properties', ' '.join(props))
+                elif name == iname:
+                    added_names.append(iname)
+                    props.append(prop)
+                    item.set('properties', ' '.join(props))
         self.dirty(self.opf_name)
         return removed_names, added_names
 
@@ -820,7 +824,7 @@ class Container(ContainerBase):  # {{{
         the form (name, linear). Will raise an error if one of the names is not
         present in the manifest. '''
         imap = self.manifest_id_map
-        imap = {name:item_id for item_id, name in iteritems(imap)}
+        imap = {name:item_id for item_id, name in imap.items()}
         items = [item for item, name, linear in self.spine_iter]
         tail, last_tail = (items[0].tail, items[-1].tail) if items else ('\n    ', '\n  ')
         for i in items:
@@ -1053,16 +1057,15 @@ class Container(ContainerBase):  # {{{
         base = os.path.dirname(path)
         if not os.path.exists(base):
             os.makedirs(base)
-        else:
-            if self.cloned and allow_modification and os.path.exists(path) and nlinks_file(path) > 1:
-                # Decouple this file from its links
-                temp = path + 'xxx'
-                shutil.copyfile(path, temp)
-                if iswindows:
-                    retry_on_fail(os.unlink, path)
-                else:
-                    os.unlink(path)
-                os.rename(temp, path)
+        elif self.cloned and allow_modification and os.path.exists(path) and nlinks_file(path) > 1:
+            # Decouple this file from its links
+            temp = path + 'xxx'
+            shutil.copyfile(path, temp)
+            if iswindows:
+                retry_on_fail(os.unlink, path)
+            else:
+                os.unlink(path)
+            os.rename(temp, path)
         return path
 
     def open(self, name, mode='rb'):
@@ -1070,7 +1073,7 @@ class Container(ContainerBase):  # {{{
         this will commit the file if it is dirtied and remove it from the parse
         cache. You must finish with this file before accessing the parsed
         version of it again, or bad things will happen. '''
-        return open(self.get_file_path_for_processing(name, mode not in {'r', 'rb'}), mode)
+        return open(make_long_path_useable(self.get_file_path_for_processing(name, mode not in {'r', 'rb'})), mode)
 
     def commit(self, outpath=None, keep_parsed=False):
         '''
@@ -1086,7 +1089,7 @@ class Container(ContainerBase):  # {{{
         if set(self.name_path_map) != set(other.name_path_map):
             return 'Set of files is not the same'
         mismatches = []
-        for name, path in iteritems(self.name_path_map):
+        for name, path in self.name_path_map.items():
             opath = other.name_path_map[name]
             with open(path, 'rb') as f1, open(opath, 'rb') as f2:
                 if f1.read() != f2.read():
@@ -1140,11 +1143,10 @@ class EpubContainer(Container):
             try:
                 if v.major == 2:
                     ans += ' 2'
+                elif not v.minor:
+                    ans += f' {v.major}'
                 else:
-                    if not v.minor:
-                        ans += f' {v.major}'
-                    else:
-                        ans += f' {v.major}.{v.minor}'
+                    ans += f' {v.major}.{v.minor}'
             except Exception:
                 pass
         return ans
@@ -1186,9 +1188,9 @@ class EpubContainer(Container):
                 try:
                     zf = ZipFile(stream)
                     zf.extractall(tdir)
-                except:
-                    log.exception('EPUB appears to be invalid ZIP file, trying a'
-                            ' more forgiving ZIP parser')
+                except Exception:
+                    if log is not None:
+                        log.exception('EPUB appears to be invalid ZIP file, trying a more forgiving ZIP parser')
                     from calibre.utils.localunzip import extractall
                     stream.seek(0)
                     extractall(stream, path=tdir)
@@ -1295,7 +1297,7 @@ class EpubContainer(Container):
 
     def read_raw_unique_identifier(self):
         package_id = raw_unique_identifier = idpf_key = None
-        for attrib, val in iteritems(self.opf.attrib):
+        for attrib, val in self.opf.attrib.items():
             if attrib.endswith('unique-identifier'):
                 package_id = val
                 break
@@ -1347,10 +1349,11 @@ class EpubContainer(Container):
                     key = item.text.rpartition(':')[-1]
                     key = uuid.UUID(key).bytes
                 except Exception:
-                    self.log.exception('Failed to parse obfuscation key')
+                    if self.log is not None:
+                        self.log.exception('Failed to parse obfuscation key')
                     key = None
 
-        for font, alg in iteritems(fonts):
+        for font, alg in fonts.items():
             tkey = key if alg == ADOBE_OBFUSCATION else idpf_key
             if not tkey:
                 raise ObfuscationKeyMissing('Failed to find obfuscation key')
@@ -1385,7 +1388,7 @@ class EpubContainer(Container):
         if outpath is None:
             outpath = self.pathtoepub
         self.commit_epub(outpath)
-        for name, data in iteritems(restore_fonts):
+        for name, data in restore_fonts.items():
             with self.open(name, 'wb') as f:
                 f.write(data)
 
@@ -1580,7 +1583,8 @@ class AZW3Container(Container):
             'calibre.ebooks.oeb.polish.container', 'do_explode',
             args=(pathtoazw3, tdir), no_output=True)['result']
         except WorkerError as e:
-            log(e.orig_tb)
+            if log is not None:
+                log(e.orig_tb)
             raise InvalidMobi('Failed to explode MOBI')
         super().__init__(rootpath=tdir, opfpath=opf_path, log=log)
         self.obfuscated_fonts = {x.replace(os.sep, '/') for x in obfuscated_fonts}
@@ -1628,7 +1632,7 @@ def get_container(path, log=None, tdir=None, tweak_mode=False, ebook_cls=None) -
     if own_tdir:
         tdir = PersistentTemporaryDirectory(f'_{ebook_cls.book_type}_container')
     try:
-        ebook = ebook_cls(path, log=log, tdir=tdir)
+        ebook = ebook_cls(path, log=log or default_log, tdir=tdir)
         ebook.tweak_mode = tweak_mode
     except BaseException:
         if own_tdir:

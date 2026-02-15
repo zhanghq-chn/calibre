@@ -9,7 +9,6 @@ import numbers
 from collections import Counter
 
 from calibre.ebooks.oeb.base import XPath, barename
-from polyglot.builtins import iteritems
 
 
 class RemoveAdobeMargins:
@@ -84,7 +83,7 @@ class RemoveFakeMargins:
             if style:
                 try:
                     ti = style['text-indent']
-                except:
+                except Exception:
                     pass
                 else:
                     if ((hasattr(ti, 'startswith') and ti.startswith('-')) or (isinstance(ti, numbers.Number) and ti < 0)):
@@ -149,7 +148,7 @@ class RemoveFakeMargins:
                 self.levels[level].append(p)
 
         remove = set()
-        for k, v in iteritems(self.levels):
+        for k, v in self.levels.items():
             num = len(v)
             self.log.debug(f'Found {num} items of level:', k)
             level = int(k.split('_')[-1])

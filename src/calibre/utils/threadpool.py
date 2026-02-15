@@ -46,9 +46,8 @@ __date__ = '$Date: 2006/06/23 12:32:25 $'
 __license__ = 'Python license'
 
 # standard library modules
+import queue
 import threading
-
-from polyglot import queue
 
 # exceptions
 
@@ -99,7 +98,7 @@ class WorkerThread(threading.Thread):
                 self.resultQueue.put(
                     (request, request.callable(*request.args, **request.kwds))
                 )
-            except:
+            except Exception:
                 request.exception = True
                 import traceback
                 self.resultQueue.put((request, traceback.format_exc()))

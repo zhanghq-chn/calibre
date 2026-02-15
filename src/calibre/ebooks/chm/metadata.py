@@ -14,7 +14,6 @@ from calibre.ebooks.chardet import xml_to_unicode
 from calibre.ebooks.metadata import MetaInformation, string_to_authors
 from calibre.ptempfile import TemporaryFile
 from calibre.utils.logging import default_log
-from polyglot.builtins import iterkeys
 
 
 def _clean(s):
@@ -81,7 +80,7 @@ def _get_comments(soup):
         # and pages often comes as '(\d+ pages)'
         pages = re.search(r'\d+', pages).group(0)
         return f'Published {date}, {pages} pages.'
-    except:
+    except Exception:
         pass
     return None
 
@@ -108,21 +107,21 @@ def _get_cover(soup, rdr):
                 # interestingly, occasionally the only image without height
                 # or width attrs is the cover...
                 r[0] = img['src']
-            except:
+            except Exception:
                 # Probably invalid width, height aattributes, ignore
                 continue
         if r:
-            l = sorted(iterkeys(r))
+            l = sorted(r.keys())
             ans = r[l[0]]
     # this link comes from the internal html, which is in a subdir
     if ans is not None:
         try:
             ans = rdr.GetFile(ans)
-        except:
+        except Exception:
             ans = rdr.root + '/' + ans
             try:
                 ans = rdr.GetFile(ans)
-            except:
+            except Exception:
                 ans = None
         if ans is not None:
             import io
@@ -132,7 +131,7 @@ def _get_cover(soup, rdr):
             try:
                 Image.open(io.BytesIO(ans)).convert('RGB').save(buf, 'JPEG')
                 ans = buf.getvalue()
-            except:
+            except Exception:
                 ans = None
     return ans
 
@@ -147,7 +146,7 @@ def get_metadata_from_reader(rdr):
         x = rdr.GetEncoding()
         codecs.lookup(x)
         enc = x
-    except:
+    except Exception:
         enc = 'cp1252'
     title = force_unicode(title, enc)
     authors = _get_authors(home)

@@ -17,7 +17,6 @@ from calibre.constants import __appname__, isxp, numeric_version
 from calibre.devices.errors import BlacklistedDevice, DeviceError, OpenFailed
 from calibre.devices.mtp.base import MTPDeviceBase, debug
 from calibre.ptempfile import SpooledTemporaryFile
-from polyglot.builtins import iteritems, itervalues
 
 null = object()
 
@@ -116,7 +115,7 @@ class MTP_DEVICE(MTPDeviceBase):
             self.last_refresh_devices_time = time.time()
             try:
                 pnp_ids = frozenset(self.wpd.enumerate_devices())
-            except:
+            except Exception:
                 return None
 
             self.detected_devices = {dev:self.detected_devices.get(dev, None)
@@ -147,7 +146,7 @@ class MTP_DEVICE(MTPDeviceBase):
                     self.currently_connected_pnp_id in self.detected_devices
                     else None)
 
-        for dev, data in iteritems(self.detected_devices):
+        for dev, data in self.detected_devices.items():
             if dev in self.blacklisted_devices or dev in self.ejected_devices:
                 # Ignore blacklisted and ejected devices
                 continue
@@ -168,7 +167,7 @@ class MTP_DEVICE(MTPDeviceBase):
             return False
         try:
             pnp_ids = frozenset(self.wpd.enumerate_devices())
-        except:
+        except Exception:
             p('Failed to get list of PNP ids on system')
             p(traceback.format_exc())
             return False
@@ -183,7 +182,7 @@ class MTP_DEVICE(MTPDeviceBase):
         for pnp_id in pnp_ids:
             try:
                 data = self.wpd.device_info(pnp_id)
-            except:
+            except Exception:
                 p('Failed to get data for device:', pnp_id)
                 p(traceback.format_exc())
                 continue
@@ -201,7 +200,7 @@ class MTP_DEVICE(MTPDeviceBase):
             except BlacklistedDevice:
                 p('This device has been blacklisted by the user')
                 continue
-            except:
+            except Exception:
                 p('Open failed:')
                 p(traceback.format_exc())
                 continue
@@ -284,10 +283,10 @@ class MTP_DEVICE(MTPDeviceBase):
                 self._currently_getting_sid = str(storage_id)
                 id_map = self.dev.get_filesystem(storage_id, partial(
                         self._filesystem_callback, {}))
-                for x in itervalues(id_map):
+                for x in id_map.values():
                     x['storage_id'] = storage_id
                 all_storage.append(storage)
-                items.append(itervalues(id_map))
+                items.append(id_map.values())
             self._filesystem_cache = FilesystemCache(all_storage, chain(*items))
             debug(f'Filesystem metadata loaded in {time.time()-st:g} seconds ({len(self._filesystem_cache)} objects)')
         return self._filesystem_cache

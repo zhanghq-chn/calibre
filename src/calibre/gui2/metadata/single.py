@@ -69,7 +69,6 @@ from calibre.gui2.widgets2 import CenteredToolButton
 from calibre.library.comments import merge_comments as merge_two_comments
 from calibre.utils.date import local_tz
 from calibre.utils.localization import canonicalize_lang, ngettext
-from polyglot.builtins import iteritems
 
 BASE_TITLE = _('Edit metadata')
 fetched_fields = ('title', 'title_sort', 'authors', 'author_sort', 'series',
@@ -322,7 +321,11 @@ class MetadataSingleDialogBase(QDialog):
 
         self.fetch_metadata_button = b = CenteredToolButton(QIcon.ic('download-metadata.png'), _('&Download metadata'), self)
         b.setPopupMode(QToolButton.ToolButtonPopupMode.DelayedPopup)
-        b.setToolTip(_('Download metadata for this book [%s]') % self.download_shortcut.key().toString(QKeySequence.SequenceFormat.NativeText))
+        b.setToolTip(_(
+            'Download metadata for this book [{}]\n\nMetadata includes title, authors, series, covers, etc.\n'
+            'For improved results, you can install more metadata sources,\n'
+            'by clicking the configure button to the right.').format(
+                self.download_shortcut.key().toString(QKeySequence.SequenceFormat.NativeText)))
         self.fetch_metadata_button.clicked.connect(self.fetch_metadata)
         self.fetch_metadata_menu = m = QMenu(self.fetch_metadata_button)
         m.addAction(QIcon.ic('edit-undo.png'), _('Undo last metadata download'), self.undo_fetch_metadata)
@@ -469,7 +472,7 @@ class MetadataSingleDialogBase(QDialog):
         self.setWindowTitle(BASE_TITLE + ' - ' +
                 title + ' -' +
                 _(' [%(num)d of %(tot)d]')%dict(num=self.current_row+1,
-                tot=len(self.row_list)))
+                tot=len(self.id_list)))
 
     def swap_title_author(self, *args):
         title = self.title.current_val
@@ -557,7 +560,7 @@ class MetadataSingleDialogBase(QDialog):
             self.publisher.set_value(mi.publisher)
         if not mi.is_null('tags'):
             old_tags = self.tags.current_val
-            tags = mi.tags if mi.tags else []
+            tags = mi.tags or []
             if old_tags and merge_tags:
                 ltags, lotags = {t.lower() for t in tags}, {t.lower() for t in
                         old_tags}
@@ -622,7 +625,7 @@ class MetadataSingleDialogBase(QDialog):
         if self.metadata_before_fetch is None:
             return error_dialog(self, _('No downloaded metadata'), _(
                 'There is no downloaded metadata to undo'), show=True)
-        for field, val in iteritems(self.metadata_before_fetch):
+        for field, val in self.metadata_before_fetch.items():
             getattr(self, field).current_val = val
         self.metadata_before_fetch = None
 
@@ -690,8 +693,8 @@ class MetadataSingleDialogBase(QDialog):
         self.save_state()
         if not self.apply_changes():
             return
-        if self.editing_multiple and self.current_row != len(self.row_list) - 1:
-            num = len(self.row_list) - 1 - self.current_row
+        if self.editing_multiple and self.current_row != len(self.id_list) - 1:
+            num = len(self.id_list) - 1 - self.current_row
             from calibre.gui2 import question_dialog
             pm = ngettext('There is another book to edit in this set.',
                           'There are still {} more books to edit in this set.', num).format(num)
@@ -717,7 +720,7 @@ class MetadataSingleDialogBase(QDialog):
         try:
             self.save_geometry(gprefs, 'metasingle_window_geometry3')
             self.save_widget_settings()
-        except:
+        except Exception:
             # Weird failure, see https://bugs.launchpad.net/bugs/995271
             import traceback
             traceback.print_exc()
@@ -725,7 +728,7 @@ class MetadataSingleDialogBase(QDialog):
     # Dialog use methods {{{
     def start(self, row_list, current_row, view_slot=None, edit_slot=None,
             set_current_callback=None):
-        self.row_list = row_list
+        self.id_list = list(map(self.db.id, row_list))
         self.current_row = current_row
         if view_slot is not None:
             self.view_format.connect(view_slot)
@@ -772,9 +775,9 @@ class MetadataSingleDialogBase(QDialog):
         self.update_window_title()
         prev = next_ = None
         if self.current_row > 0:
-            prev = self.db.title(self.row_list[self.current_row-1])
-        if self.current_row < len(self.row_list) - 1:
-            next_ = self.db.title(self.row_list[self.current_row+1])
+            prev = self.db.new_api.field_for('title', self.id_list[self.current_row-1])
+        if self.current_row < len(self.id_list) - 1:
+            next_ = self.db.new_api.field_for('title', self.id_list[self.current_row+1])
 
         if next_ is not None:
             tip = _('Save changes and edit the metadata of {0} [{1}]').format(
@@ -788,8 +791,8 @@ class MetadataSingleDialogBase(QDialog):
         self.prev_button.setEnabled(prev is not None)
         self.button_box.button(QDialogButtonBox.StandardButton.Ok).setDefault(True)
         self.button_box.button(QDialogButtonBox.StandardButton.Ok).setFocus(Qt.FocusReason.OtherFocusReason)
-        self(self.db.id(self.row_list[self.current_row]))
-        for w, state in iteritems(self.comments_edit_state_at_apply):
+        self(self.id_list[self.current_row])
+        for w, state in self.comments_edit_state_at_apply.items():
             if state == 'code':
                 w.tab = 'code'
 
@@ -802,7 +805,7 @@ class MetadataSingleDialogBase(QDialog):
         def disconnect(signal):
             try:
                 signal.disconnect()
-            except:
+            except Exception:
                 pass  # Fails if view format was never connected
         disconnect(self.view_format)
         disconnect(self.edit_format)

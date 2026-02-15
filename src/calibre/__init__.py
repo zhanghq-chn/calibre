@@ -11,7 +11,7 @@ import warnings
 from functools import lru_cache, partial
 from math import floor
 
-from polyglot.builtins import codepoint_to_chr, hasenv, native_string_type
+from polyglot.builtins import hasenv
 
 if not hasenv('CALIBRE_SHOW_DEPRECATION_WARNINGS'):
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -26,6 +26,7 @@ from calibre.constants import (
     __version__,
     config_dir,
     filesystem_encoding,
+    is_debugging,
     isbsd,
     isfrozen,
     islinux,
@@ -126,7 +127,7 @@ def confirm_config_name(name):
 
 
 _filename_sanitize_unicode = frozenset(('\\', '|', '?', '*', '<',        # no2to3
-    '"', ':', '>', '+', '/') + tuple(map(codepoint_to_chr, range(32))))  # no2to3
+    '"', ':', '>', '+', '/') + tuple(map(chr, range(32))))  # no2to3
 
 
 def sanitize_file_name(name, substitute='_'):
@@ -228,7 +229,7 @@ def extract(path, dir):
 
 
 def get_proxies(debug=True):
-    from polyglot.urllib import getproxies
+    from urllib.request import getproxies
     proxies = getproxies()
     for key, proxy in list(proxies.items()):
         if not proxy or '..' in proxy or key == 'auto':
@@ -238,8 +239,7 @@ def get_proxies(debug=True):
             proxy = proxy[len(key)+3:]
         if key == 'https' and proxy.startswith('http://'):
             proxy = proxy[7:]
-        if proxy.endswith('/'):
-            proxy = proxy[:-1]
+        proxy = proxy.removesuffix('/')
         if len(proxy) > 4:
             proxies[key] = proxy
         else:
@@ -273,7 +273,7 @@ def get_parsed_proxy(typ='http', debug=True):
                     }
                 if ans['port']:
                     ans['port'] = int(ans['port'])
-            except:
+            except Exception:
                 if debug:
                     import traceback
                     traceback.print_exc()
@@ -290,7 +290,7 @@ def get_proxy_info(proxy_scheme, proxy_string):
     is not available in the string. If an exception occurs parsing the string
     this method returns None.
     '''
-    from polyglot.urllib import urlparse
+    from urllib.parse import urlparse
     try:
         proxy_url = f'{proxy_scheme}://{proxy_string}'
         urlinfo = urlparse(proxy_url)
@@ -493,23 +493,13 @@ def entity_regex():
 
 
 def replace_entities(raw, encoding=None):
-    if encoding is None:
-        try:
-            from calibre_extensions.fast_html_entities import replace_all_entities
-            replace_all_entities(raw)
-        except ImportError:  # Running from source without updated binaries
-            pass
-    return entity_regex().sub(partial(entity_to_unicode, encoding=encoding), raw)
+    from calibre_extensions.fast_html_entities import replace_all_entities
+    return replace_all_entities(raw)
 
 
 def xml_replace_entities(raw, encoding=None):
-    if encoding is None:
-        try:
-            from calibre_extensions.fast_html_entities import replace_all_entities
-            replace_all_entities(raw, True)
-        except ImportError:  # Running from source without updated binaries
-            pass
-    return entity_regex().sub(partial(xml_entity_to_unicode, encoding=encoding), raw)
+    from calibre_extensions.fast_html_entities import replace_all_entities
+    return replace_all_entities(raw, True)
 
 
 def prepare_string_for_xml(raw, attribute=False):
@@ -548,7 +538,7 @@ def as_unicode(obj, enc=preferred_encoding):
             obj = str(obj)
         except Exception:
             try:
-                obj = native_string_type(obj)
+                obj = str(obj)
             except Exception:
                 obj = repr(obj)
     return force_unicode(obj, enc=enc)
@@ -571,8 +561,7 @@ def human_readable(size, sep=' '):
     size = str(float(size)/divisor)
     if size.find('.') > -1:
         size = size[:size.find('.')+2]
-    if size.endswith('.0'):
-        size = size[:-2]
+    size = size.removesuffix('.0')
     return size + sep + suffix
 
 
@@ -602,3 +591,12 @@ def fsync(fileobj):
         except Exception:
             import traceback
             traceback.print_exc()
+
+
+def timed_print(*a, **kw):
+    if not is_debugging():
+        return
+    from time import monotonic
+    if not hasattr(timed_print, 'startup_time'):
+        timed_print.startup_time = monotonic()
+    print(f'[{monotonic() - timed_print.startup_time:.2f}]', *a, **kw)

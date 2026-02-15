@@ -91,20 +91,24 @@ author_surname_prefixes = ('da', 'de', 'di', 'la', 'le', 'van', 'von')
 # Default: r'(?i),?\s+(and|with)\s+'
 authors_split_regex = r'(?i),?\s+(and|with)\s+'
 
-#: Use author sort in Tag browser
-# Set which author field to display in the Tag browser (the list of authors,
-# series, publishers etc on the left hand side). The choices are author and
-# author_sort. This tweak affects only what is displayed under the authors
-# category in the Tag browser and Content server. Please note that if you set this
-# to author_sort, it is very possible to see duplicate names in the list because
-# although it is guaranteed that author names are unique, there is no such
-# guarantee for author_sort values. Showing duplicates won't break anything, but
-# it could lead to some confusion. When using 'author_sort', the tooltip will
-# show the author's name.
+#: Use author_sort and/or series_sort for names in Tag browser
+# Set which author or series field is used to display as the item name in the
+# Tag browser (the list of authors, series, publishers etc on the left hand
+# side). The choices for author are 'author' and 'author_sort'. The choices for
+# series are 'series' and 'series_sort'. This tweak affects only what is
+# displayed under the category in the Tag browser and Content server. Please
+# note that if you set this to …_sort, it is possible to see duplicate names in
+# the list because although it is guaranteed that author and series names are
+# unique, there is no such guarantee for their sort values. Showing duplicates
+# won't break anything but it could lead to some confusion. The tooltip for an
+# item will show the item's name no matter how you set this tweak.
 # Examples:
 #   categories_use_field_for_author_name = 'author'
 #   categories_use_field_for_author_name = 'author_sort'
+#   categories_use_field_for_series_name = 'series'
+#   categories_use_field_for_series_name = 'series_sort'
 categories_use_field_for_author_name = 'author'
+categories_use_field_for_series_name = 'series'
 
 #: Control partitioning of Tag browser
 # When partitioning the Tag browser, the format of the subcategory label is
@@ -457,8 +461,10 @@ gui_view_history_size = 15
 #: Change the font size of the Book details panel in the interface
 # Change the font size at which book details are rendered in the side panel and
 # comments are rendered in the metadata edit dialog. Set it to a positive or
-# negative number to increase or decrease the font size.
+# negative number to increase or decrease the font size. Similarly, change the
+# font size of the widget used to converse with AI.
 change_book_details_font_size_by = 0
+change_ai_chat_font_size_by = 0
 
 #: What format to default to when using the "Unpack book" feature
 # The "Unpack book" feature of calibre allows direct editing of a book format.
@@ -597,3 +603,18 @@ calendar_start_day_of_week = 'Default'
 # with a base language of Chinese.
 # Example: east_asian_base_language = 'ja'
 east_asian_base_language = ''
+
+#: Hide AI features
+# Hide AI features throughout the calibre user interface. Note that AI is
+# already opt-in and no AI related code is even loaded until the user configures some
+# AI backend. This tweak exists simply to hide a few menu entries and the like
+# that mention AI.
+hide_ai_features = False
+
+#: Control GPU usage in Qt WebEngine
+# Qt WebEngine is the library that is used to render content in the calibre
+# viewer and editor. It can optionally use the GPU for enhanced performance,
+# however, this can cause crashes/black screens on some older systems, so it
+# is disabled by default. In normal usage, the performance difference is not
+# noticeable anyway.
+qt_webengine_uses_gpu = False

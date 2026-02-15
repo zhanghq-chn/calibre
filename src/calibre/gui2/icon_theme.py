@@ -1,22 +1,23 @@
 #!/usr/bin/env python
 
-
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import bz2
 import errno
+import http.client
 import importlib
 import json
 import math
 import os
 import sys
 import tempfile
+from compression import bz2
 from contextlib import suppress
 from functools import lru_cache
 from io import BytesIO
 from itertools import count
 from multiprocessing.pool import ThreadPool
+from queue import Empty, Queue
 from threading import Event, Thread
 from xml.sax.saxutils import escape
 
@@ -73,9 +74,7 @@ from calibre.utils.img import Canvas, image_from_data, optimize_jpeg, optimize_p
 from calibre.utils.resources import get_image_path as I
 from calibre.utils.resources import get_path as P
 from calibre.utils.zipfile import ZIP_STORED, ZipFile
-from polyglot import http_client
-from polyglot.builtins import as_bytes, iteritems, reraise
-from polyglot.queue import Empty, Queue
+from polyglot.builtins import as_bytes, reraise
 
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 THEME_COVER = 'icon-theme-cover.jpg'
@@ -247,7 +246,7 @@ def create_cover(report=None, icons=(), cols=5, size=120, padding=16, darkbg=Fal
 def verify_theme(report):
     must_use_qt()
     report.bad = bad = {}
-    for name, path in iteritems(report.name_map):
+    for name, path in report.name_map.items():
         reader = QImageReader(os.path.join(report.path, path))
         img = reader.read()
         if img.isNull():
@@ -459,7 +458,7 @@ def create_themeball(report, theme_metadata, progress=None, abort=None):
         return None, None, None
     if progress is not None:
         progress(next(num), _('Compressing theme file'))
-    import lzma
+    from compression import lzma
     compressed = lzma.compress(icon_zip_data.getvalue(), format=lzma.FORMAT_XZ, preset=9)
     buf = BytesIO()
     prefix = report.name
@@ -524,7 +523,7 @@ def download_cover(cover_url, etag=None, cached=b''):
         etag = response.getheader('ETag', None) or None
         return cached, etag
     except HTTPError as e:
-        if etag and e.code == http_client.NOT_MODIFIED:
+        if etag and e.code == http.client.NOT_MODIFIED:
             return cached, etag
         raise
 
@@ -619,8 +618,8 @@ class Delegate(QStyledItemDelegate):
         text = _('''\
             <p><b><big>{title}</big></b><p>
             <p>by <i>{author}</i> with <b>{number}</b> icons [{size}]</p>
-            <p>{description}</p>
             <p>Version: {version} Number of users: {usage:n}</p>
+            <p>{description}</p>
             <p><i>{visit}</i></p>
             ''').format(title=escape(theme.get('title') or _('Unknown')), author=escape(theme.get('author', _('Unknown'))),
                        number=theme.get('number', 0), description=escape(theme.get('description', '')),
@@ -630,6 +629,8 @@ class Delegate(QStyledItemDelegate):
         st = self.static_text_cache.get(text)
         if st is None:
             self.static_text_cache[text] = st = QStaticText(text)
+        st.setTextWidth(option.rect.width() - COVER_SIZE[0] - self.SPACING - 2)
+        painter.setClipRect(option.rect.adjusted(0, 0, 0, -2))
         painter.drawStaticText(COVER_SIZE[0] + self.SPACING, option.rect.top() + self.SPACING, st)
         painter.restore()
 

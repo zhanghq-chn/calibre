@@ -8,7 +8,7 @@ import os
 import re
 import time
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from functools import partial
 
 from calibre import prints
@@ -16,7 +16,6 @@ from calibre.constants import filesystem_encoding, ismacos, iswindows
 from calibre.ebooks import BOOK_EXTENSIONS
 from calibre.utils.filenames import make_long_path_useable
 from calibre.utils.icu import lower as icu_lower
-from polyglot.builtins import itervalues
 
 
 def splitext(path):
@@ -109,6 +108,22 @@ def listdir(root, sort_by_mtime=False):
             yield path
 
 
+def list_only_files_in_dir(root, sort_by_mtime=False):
+    def files_iter():
+        for x in os.scandir(root):
+            with suppress(OSError):
+                if x.is_file(follow_symlinks=True):
+                    yield x
+    items = files_iter()
+    if sort_by_mtime:
+        def safe_mtime(x: os.DirEntry):
+            with suppress(OSError):
+                return x.stat(follow_symlinks=True).st_mtime_ns
+            return 0
+        items = sorted(items, key=safe_mtime)
+    yield from (make_long_path_useable(os.path.join(root, x.name)) for x in items)
+
+
 def allow_path(path, ext, compiled_rules):
     ans = filter_filename(compiled_rules, os.path.basename(path))
     if ans is None:
@@ -138,7 +153,7 @@ def run_import_plugins(formats):
     return ans
 
 
-def find_books_in_directory(dirpath, single_book_per_directory, compiled_rules=(), listdir_impl=listdir):
+def find_books_in_directory(dirpath, single_book_per_directory, compiled_rules=(), listdir_impl=list_only_files_in_dir):
     dirpath = make_long_path_useable(os.path.abspath(dirpath))
     if single_book_per_directory:
         formats = {}
@@ -147,7 +162,7 @@ def find_books_in_directory(dirpath, single_book_per_directory, compiled_rules=(
             if allow_path(path, ext, compiled_rules):
                 formats[ext] = path
         if formats_ok(formats):
-            yield list(itervalues(formats))
+            yield list(formats.values())
     else:
         books = defaultdict(dict)
         for path in listdir_impl(dirpath, sort_by_mtime=True):
@@ -155,9 +170,9 @@ def find_books_in_directory(dirpath, single_book_per_directory, compiled_rules=(
             if allow_path(path, ext, compiled_rules):
                 books[icu_lower(key) if isinstance(key, str) else key.lower()][ext] = path
 
-        for formats in itervalues(books):
+        for formats in books.values():
             if formats_ok(formats):
-                yield list(itervalues(formats))
+                yield list(formats.values())
 
 
 def create_format_map(formats):
@@ -231,7 +246,7 @@ def recursive_import(db, root, single_book_per_directory=True,
 
 def cdb_find_in_dir(dirpath, single_book_per_directory, compiled_rules):
     return find_books_in_directory(dirpath, single_book_per_directory=single_book_per_directory,
-            compiled_rules=compiled_rules, listdir_impl=partial(listdir, sort_by_mtime=True))
+            compiled_rules=compiled_rules, listdir_impl=partial(list_only_files_in_dir, sort_by_mtime=True))
 
 
 def cdb_recursive_find(root, single_book_per_directory=True, compiled_rules=()):

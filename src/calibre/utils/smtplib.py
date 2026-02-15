@@ -48,11 +48,10 @@ import email.utils
 import hmac
 import re
 import socket
+import ssl
 from email.base64mime import body_encode as encode_base64
 from functools import partial
 from sys import stderr
-
-from polyglot.builtins import string_or_bytes
 
 __all__ = [
     'SMTP',
@@ -189,40 +188,6 @@ def quotedata(data):
     '''
     return re.sub(r'(?m)^\.', '..',
         re.sub(r'(?:\r\n|\n|\r(?!\n))', CRLF, data))
-
-
-try:
-    import ssl
-except ImportError:
-    _have_ssl = False
-else:
-    class SSLFakeFile:
-        '''A fake file like object that really wraps a SSLObject.
-
-        It only supports what is needed in smtplib.
-        '''
-
-        def __init__(self, sslobj):
-            self.sslobj = sslobj
-
-        def readline(self, size=-1):
-            if size < 0:
-                size = None
-            str = ''
-            chr = None
-            while chr != '\n':
-                if size is not None and len(str) >= size:
-                    break
-                chr = self.sslobj.read(1)
-                if not chr:
-                    break
-                str += chr
-            return str
-
-        def close(self):
-            pass
-
-    _have_ssl = True
 
 
 class SMTP:
@@ -677,13 +642,10 @@ class SMTP:
             raise SMTPException('STARTTLS extension not supported by server.')
         resp, reply = self.docmd('STARTTLS')
         if resp == 220:
-            if not _have_ssl:
-                raise RuntimeError('No SSL support included in this Python')
             if context is None:
-                self.sock = ssl.wrap_socket(self.sock)
-            else:
-                self.sock = context.wrap_socket(self.sock, server_hostname=self._host)
-            self.file = SSLFakeFile(self.sock)
+                context = ssl._create_stdlib_context()
+            self.sock = context.wrap_socket(self.sock, server_hostname=self._host)
+            self.file = None
             # RFC 3207:
             # The client MUST discard any knowledge obtained from
             # the server, such as the list of SMTP service extensions,
@@ -771,11 +733,11 @@ class SMTP:
             self.rset()
             raise SMTPSenderRefused(code, resp, from_addr)
         senderrs = {}
-        if isinstance(to_addrs, string_or_bytes):
+        if isinstance(to_addrs, (str, bytes)):
             to_addrs = [to_addrs]
         for each in to_addrs:
             code, resp = self.rcpt(each, rcpt_options)
-            if (code != 250) and (code != 251):
+            if code not in {250, 251}:
                 senderrs[each] = (code, resp)
         if len(senderrs) == len(to_addrs):
             # the server refused all our recipients
@@ -812,37 +774,37 @@ class SMTP:
         return res
 
 
-if _have_ssl:
+class SMTP_SSL(SMTP):
+    ''' This is a subclass derived from SMTP that connects over an SSL encrypted
+    socket (to use this class you need a socket module that was compiled with SSL
+    support). If host is not specified, '' (the local host) is used. If port is
+    omitted, the standard SMTP-over-SSL port (465) is used. keyfile and certfile
+    are also optional - they can contain a PEM formatted private key and
+    certificate chain file for the SSL connection.
+    '''
 
-    class SMTP_SSL(SMTP):
-        ''' This is a subclass derived from SMTP that connects over an SSL encrypted
-        socket (to use this class you need a socket module that was compiled with SSL
-        support). If host is not specified, '' (the local host) is used. If port is
-        omitted, the standard SMTP-over-SSL port (465) is used. keyfile and certfile
-        are also optional - they can contain a PEM formatted private key and
-        certificate chain file for the SSL connection.
-        '''
+    default_port = SMTP_SSL_PORT
 
-        default_port = SMTP_SSL_PORT
+    def __init__(self, host='', port=0, local_hostname=None,
+                    keyfile=None, certfile=None,
+                    timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+                    debug_to=partial(print, file=stderr), context=None):
+        self.keyfile = keyfile
+        self.certfile = certfile
+        if context is None:
+            context = ssl._create_stdlib_context()
+        self.context = context
+        SMTP.__init__(self, host, port, local_hostname, timeout,
+                debug_to=debug_to)
 
-        def __init__(self, host='', port=0, local_hostname=None,
-                     keyfile=None, certfile=None,
-                     timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
-                     debug_to=partial(print, file=stderr)):
-            self.keyfile = keyfile
-            self.certfile = certfile
-            SMTP.__init__(self, host, port, local_hostname, timeout,
-                    debug_to=debug_to)
+    def _get_socket(self, host, port, timeout):
+        new_socket = super()._get_socket(host, port, timeout)
+        new_socket = self.context.wrap_socket(new_socket,
+                                                server_hostname=self._host)
+        return new_socket
 
-        def _get_socket(self, host, port, timeout):
-            if self.debuglevel > 0:
-                self.debug('connect:', (host, port))
-            new_socket = socket.create_connection((host, port), timeout)
-            new_socket = ssl.wrap_socket(new_socket, self.keyfile, self.certfile)
-            self.file = SSLFakeFile(new_socket)
-            return new_socket
 
-    __all__.append('SMTP_SSL')
+__all__.append('SMTP_SSL')
 
 #
 # LMTP extension

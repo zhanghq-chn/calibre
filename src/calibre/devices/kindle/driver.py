@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+from typing import NamedTuple
 
 from calibre import fsync, prints, strftime
 from calibre.constants import DEBUG, filesystem_encoding
@@ -295,17 +296,16 @@ class KINDLE(USBMS):
                                 text=(user_notes[location]['text'] if
                                       user_notes[location]['type'] == 'Note' else
                                       '<i>{}</i>'.format(user_notes[location]['text']))))
+                elif bookmark.book_format == 'pdf':
+                    annotations.append(
+                            _('<b>Page %(dl)d &bull; %(typ)s</b><br />') % dict(
+                                dl=user_notes[location]['displayed_location'],
+                                typ=user_notes[location]['type']))
                 else:
-                    if bookmark.book_format == 'pdf':
-                        annotations.append(
-                                _('<b>Page %(dl)d &bull; %(typ)s</b><br />') % dict(
-                                    dl=user_notes[location]['displayed_location'],
-                                    typ=user_notes[location]['type']))
-                    else:
-                        annotations.append(
-                                _('<b>Location %(dl)d &bull; %(typ)s</b><br />') % dict(
-                                    dl=user_notes[location]['displayed_location'],
-                                    typ=user_notes[location]['type']))
+                    annotations.append(
+                            _('<b>Location %(dl)d &bull; %(typ)s</b><br />') % dict(
+                                dl=user_notes[location]['displayed_location'],
+                                typ=user_notes[location]['type']))
 
             for annotation in annotations:
                 annot = BeautifulSoup('<span>' + annotation + '</span>').find('span')
@@ -364,6 +364,18 @@ class KINDLE(USBMS):
                 mi.tags = ['Clippings']
                 mi.comments = last_update
                 db.add_books([bm.value['path']], ['txt'], [mi])
+
+
+class APNXOpts(NamedTuple):
+    send_apnx: bool = True
+    apnx_method: str = 'fast'
+    custom_col_name: str = ''
+    method_col_name: str = ''
+    overwrite: bool = True
+
+
+def get_apnx_opts() -> APNXOpts:
+    return APNXOpts(*KINDLE2.settings().extra_customization)
 
 
 class KINDLE2(KINDLE):
@@ -463,7 +475,7 @@ class KINDLE2(KINDLE):
         if os.access(collections, os.R_OK):
             try:
                 self.kindle_update_booklist(bl, collections)
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
         return bl
@@ -513,7 +525,7 @@ class KINDLE2(KINDLE):
         # Upload the cover thumbnail
         try:
             self.upload_kindle_thumbnail(metadata, filepath)
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
         # Upload the apnx file
@@ -621,7 +633,7 @@ class KINDLE2(KINDLE):
         if cust_col_name:
             try:
                 custom_page_count = int(metadata.get(cust_col_name, 0))
-            except:
+            except Exception:
                 pass
 
         apnx_path = f'{os.path.join(path, filename)}.apnx'
@@ -638,10 +650,10 @@ class KINDLE2(KINDLE):
                             method = temp
                         else:
                             print(f'Invalid method choice for this book ({temp!r}), ignoring.')
-                    except:
+                    except Exception:
                         print('Could not retrieve override method choice, using default.')
                 apnx_builder.write_apnx(filepath, apnx_path, method=method, page_count=custom_page_count)
-            except:
+            except Exception:
                 print('Failed to generate APNX')
                 import traceback
                 traceback.print_exc()

@@ -60,7 +60,7 @@ def comments_to_html(comments):
     if sanitize_pat.search(comments) is not None:
         try:
             return sanitize_comments_html(comments)
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
             return '<p></p>'
@@ -145,6 +145,10 @@ def sanitize_comments_html(html):
     md = Markdown()
     html = md.convert(text)
     return html
+
+
+def comments_as_markdown(x: str | None) -> str:
+    return html2text(comments_to_html(x or ''), single_line_break=False)
 
 
 def find_tests():

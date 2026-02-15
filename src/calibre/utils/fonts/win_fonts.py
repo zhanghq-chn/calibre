@@ -14,7 +14,6 @@ from calibre import isbytestring, prints
 from calibre.constants import filesystem_encoding
 from calibre.utils.fonts.utils import get_font_characteristics, get_font_names, is_truetype_font
 from calibre.utils.resources import get_path as P
-from polyglot.builtins import iteritems
 
 
 class WinFonts:
@@ -90,7 +89,7 @@ class WinFonts:
 
             try:
                 family_name, sub_family_name, full_name = get_font_names(data)
-            except:
+            except Exception:
                 pass
 
             if normalize:
@@ -112,7 +111,7 @@ class WinFonts:
                 try:
                     sub_family_name.encode('ascii')
                     subf = sub_family_name
-                except:
+                except Exception:
                     subf = ''
 
                 name = family + ((' ' + subf) if subf else '')
@@ -169,7 +168,7 @@ def test():
 
     for family in families:
         prints(family + ':')
-        for font, data in iteritems(w.fonts_for_family(family)):
+        for font, data in w.fonts_for_family(family).items():
             prints('  ', font, data[0], data[1], len(data[2]))
         print()
 

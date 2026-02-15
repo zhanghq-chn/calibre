@@ -8,7 +8,6 @@ import os
 from calibre import fsync
 from calibre.devices.usbms.driver import USBMS
 from calibre.utils.resources import get_image_path as I
-from polyglot.builtins import string_or_bytes
 
 HTC_BCDS = [0x100, 0x0222, 0x0224, 0x0226, 0x227, 0x228, 0x229, 0x0231, 0x9999]
 
@@ -286,7 +285,7 @@ class ANDROID(USBMS):
             opts = [self.EBOOK_DIR_MAIN, '']
 
         def strtolist(x):
-            if isinstance(x, string_or_bytes):
+            if isinstance(x, (str, bytes)):
                 x = [y.strip() for y in x.split(',')]
             return x or []
 
@@ -313,7 +312,7 @@ class ANDROID(USBMS):
     def windows_sort_drives(self, drives):
         try:
             vid, pid, bcd = self.device_being_opened[:3]
-        except:
+        except Exception:
             vid, pid, bcd = -1, -1, -1
         if (vid, pid, bcd) == (0x0e79, 0x1408, 0x0222):
             letter_a = drives.get('carda', None)

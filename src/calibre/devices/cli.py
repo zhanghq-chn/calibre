@@ -110,7 +110,7 @@ def ls(dev, path, recurse=False, human_readable_size=False, ll=False, cols=0):
         for row in table:
             c = 0
             for item in row:
-                rowwidths[c] = len(item) if len(item) > rowwidths[c] else rowwidths[c]
+                rowwidths[c] = max(rowwidths[c], len(item))
                 c += 1
         return rowwidths
 
@@ -130,8 +130,7 @@ def ls(dev, path, recurse=False, human_readable_size=False, ll=False, cols=0):
                 if human_readable_size:
                     file = FileFormatter(file)
                     size = len(file.human_readable_size)
-                if size > maxlen:
-                    maxlen = size
+                maxlen = max(maxlen, size)
         for file in files:
             file = FileFormatter(file)
             name = file.name if ll else file.isdir_name
@@ -175,7 +174,7 @@ def shutdown_plugins():
     for d in device_plugins():
         try:
             d.shutdown()
-        except:
+        except Exception:
             pass
 
 
@@ -207,7 +206,7 @@ def main():
     for d in device_plugins():
         try:
             d.startup()
-        except:
+        except Exception:
             print(f'Startup failed for device plugin: {d}')
         if d.MANAGES_DEVICE_PRESENCE:
             cd = d.detect_managed_devices(scanner.devices)
@@ -230,7 +229,7 @@ def main():
     for det, d in connected_devices:
         try:
             d.open(det, None)
-        except:
+        except Exception:
             continue
         else:
             dev = d
@@ -297,8 +296,7 @@ def main():
             if args[0].startswith('dev:'):
                 outfile = args[1]
                 path = args[0][4:]
-                if path.endswith('/'):
-                    path = path[:-1]
+                path = path.removesuffix('/')
                 if os.path.isdir(outfile):
                     outfile = os.path.join(outfile, path[path.rfind('/')+1:])
                 try:

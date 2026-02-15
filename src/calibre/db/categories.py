@@ -14,7 +14,6 @@ from calibre.utils.config_base import prefs, tweaks
 from calibre.utils.icu import collation_order, sort_key
 from calibre.utils.icu import lower as icu_lower
 from calibre.utils.icu import upper as icu_upper
-from polyglot.builtins import iteritems, native_string_type
 
 CATEGORY_SORTS = ('name', 'popularity', 'rating')  # This has to be a tuple not a set
 
@@ -66,7 +65,7 @@ class Tag:
         return self.string_representation
 
     def __repr__(self):
-        return native_string_type(self)
+        return str(self)
 
     __calibre_serializable__ = True
 
@@ -96,11 +95,18 @@ def create_tag_class(category, fm):
     is_editable = category not in {'news', 'rating', 'languages', 'formats',
                                    'identifiers'} and dt != 'composite'
 
-    if (tweaks['categories_use_field_for_author_name'] == 'author_sort' and
+    if (
+        (
             (category == 'authors' or
                 (cat['display'].get('is_names', False) and
-                cat['is_custom'] and cat['is_multiple'] and
-                dt == 'text'))):
+                 cat['is_custom'] and cat['is_multiple'] and
+                 dt == 'text')
+            ) and tweaks['categories_use_field_for_author_name'] == 'author_sort'
+        ) or (
+            dt == 'series' and
+            tweaks['categories_use_field_for_series_name'] == 'series_sort'
+        )
+       ):
         use_sort_as_name = True
     else:
         use_sort_as_name = False
@@ -126,7 +132,7 @@ def clean_user_categories(dbcache):
     try:
         if new_cats != user_cats:
             dbcache.set_pref('user_categories', new_cats)
-    except:
+    except Exception:
         pass
     return new_cats
 
@@ -292,7 +298,7 @@ def get_categories(dbcache, sort='name', book_ids=None, first_letter_sort=False,
         # do the verification in the category loop much faster, at the cost of
         # temporarily duplicating the categories lists.
         taglist = {}
-        for c, items in iteritems(categories):
+        for c, items in categories.items():
             taglist[c] = {icu_lower(t.name): t for t in items}
 
         # Add the category values to the user categories
@@ -345,7 +351,7 @@ def get_categories(dbcache, sort='name', book_ids=None, first_letter_sort=False,
     for srch in sorted(queries, key=sort_key):
         items.append(Tag(srch, sort=srch, search_expression=queries[srch],
                          category='search', is_editable=False))
-    if len(items):
+    if items:
         categories['search'] = items
 
     return categories

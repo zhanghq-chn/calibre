@@ -65,7 +65,7 @@ max_image_size_help = _(
     ' their height is no more than {4} pixels. Note that this only affects the size of the actual'
     ' image files themselves. Any given image may be rendered at a different size depending on the styling'
     ' applied to it in the document.'
-).format('none', 'profile', '100x200', 100, 200)
+).format('profile', 'none', '100x200', 100, 200)
 
 
 class EPUBOutput(OutputFormatPlugin):
@@ -281,11 +281,10 @@ class EPUBOutput(OutputFormatPlugin):
                 encryption = self.encrypt_fonts(encrypted_fonts, tdir, uuid)
             if self.opts.epub_version == '3':
                 encryption = self.upgrade_to_epub3(tdir, opf, encryption)
-            else:
-                if cb := getattr(self, 'container_callback', None):
-                    container, cxpath, encpath = self.create_container(tdir, opf, encryption)
-                    cb(container)
-                    encryption = self.end_container(cxpath, encpath)
+            elif cb := getattr(self, 'container_callback', None):
+                container, cxpath, encpath = self.create_container(tdir, opf, encryption)
+                cb(container)
+                encryption = self.end_container(cxpath, encpath)
 
             from calibre.ebooks.epub import initialize_container
             with initialize_container(output_path, os.path.basename(opf),
@@ -467,7 +466,7 @@ class EPUBOutput(OutputFormatPlugin):
                         prior = next(br.itersiblings(preceding=True))
                         priortag = barename(prior.tag)
                         priortext = prior.tail
-                    except:
+                    except Exception:
                         priortag = 'body'
                         priortext = body.text
                     if priortext:
@@ -611,6 +610,16 @@ class KEPUBOutput(OutputFormatPlugin):
             help=max_image_size_help
         ),
 
+        OptionRecommendation(name='kepub_prefer_justification', recommended_value=False,
+            help=_(
+                'The KEPUB renderer on the Kobo has a bug when text justification is turned on.'
+                ' It will either not justify text properly or when highlighting there will be gaps'
+                ' between neighboring highlighted parts of text. By default, calibre generates'
+                ' KEPUB that avoid the highlighting gaps at the expense of worse text justification.'
+                ' This option reverses that tradeoff. Use this option if you use justification when'
+                ' reading on your Kobo device.'
+        )),
+
         OptionRecommendation(name='kepub_affect_hyphenation', recommended_value=False,
             help=_('Modify how hyphenation is performed for this book. Note that hyphenation'
                    ' does not perform well for all languages, as it depends on the dictionaries'
@@ -653,6 +662,7 @@ class KEPUBOutput(OutputFormatPlugin):
                 hyphenation_min_chars_before=opts.kepub_hyphenation_min_chars_before,
                 hyphenation_min_chars_after=opts.kepub_hyphenation_min_chars_after,
                 hyphenation_limit_lines=opts.kepub_hyphenation_limit_lines,
+                prefer_justification=opts.kepub_prefer_justification,
             )
             kepubify_container(container, kopts)
             container.commit()
@@ -666,6 +676,7 @@ class KEPUBOutput(OutputFormatPlugin):
         opts.extract_to = et
         opts.flow_size = fs
         opts.epub_max_image_size = opts.kepub_max_image_size
+        opts.preserve_cover_aspect_ratio = True
         epub_output.container_callback = kepubify
         try:
             epub_output.convert(oeb, output_path, input_plugin, opts, log)

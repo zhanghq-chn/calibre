@@ -15,7 +15,6 @@ from operator import attrgetter
 from calibre.constants import config_dir
 from calibre.utils.localization import _
 from calibre.utils.lock import ExclusiveFile
-from polyglot.builtins import itervalues
 
 Option = namedtuple('Option', 'name default longdoc shortdoc choices')
 
@@ -43,7 +42,7 @@ raw_options = (
     None,
 
     _('Time (in seconds) to wait for a response from the server when making queries'),
-    'ajax_timeout', 60.0,
+    'ajax_timeout', 300.0,
     None,
 
     _('Total time in seconds to wait for clean shutdown'),
@@ -227,7 +226,7 @@ class Options:
     __slots__ = tuple(name for name in options)
 
     def __init__(self, **kwargs):
-        for opt in itervalues(options):
+        for opt in options.values():
             setattr(self, opt.name, kwargs.get(opt.name, opt.default))
 
 
@@ -254,7 +253,7 @@ def boolean_option(add_option, opt):
 def opts_to_parser(usage):
     from calibre.utils.config import OptionParser
     parser = OptionParser(usage)
-    for opt in itervalues(options):
+    for opt in options.values():
         add_option = partial(parser.add_option, dest=opt.name, help=opt_to_cli_help(opt), default=opt.default)
         if opt.default is True or opt.default is False:
             boolean_option(add_option, opt)

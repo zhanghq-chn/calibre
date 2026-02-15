@@ -37,7 +37,7 @@ class SNBInput(InputFormatPlugin):
         snbFile = SNBFile()
         try:
             snbFile.Parse(stream)
-        except:
+        except Exception:
             raise ValueError('Invalid SNB file')
         if not snbFile.IsValid():
             log.debug('Invalid SNB file')
@@ -58,8 +58,8 @@ class SNBInput(InputFormatPlugin):
                   'cover'    : './/head/cover',
             }
             d = {}
-            for item in l:
-                node = meta.find(l[item])
+            for item, path in l.items():
+                node = meta.find(path)
                 if node is not None:
                     d[item] = node.text if node.text is not None else ''
                 else:

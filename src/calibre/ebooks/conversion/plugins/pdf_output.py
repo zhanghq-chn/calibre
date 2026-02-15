@@ -11,7 +11,6 @@ import os
 
 from calibre.customize.conversion import OptionRecommendation, OutputFormatPlugin
 from calibre.ptempfile import TemporaryDirectory
-from polyglot.builtins import iteritems
 
 UNITS = ('millimeter', 'centimeter', 'point', 'inch', 'pica', 'didot',
         'cicero', 'devicepixel')
@@ -216,7 +215,7 @@ class PDFOutput(OutputFormatPlugin):
                     try:
                         s = rule.style
                         src = s.getProperty('src').propertyValue[0].uri
-                    except:
+                    except Exception:
                         continue
                     path = item.abshref(src)
                     ff = self.oeb.manifest.hrefs.get(urlnormalize(path), None)
@@ -228,7 +227,7 @@ class PDFOutput(OutputFormatPlugin):
                         processed.add(path)
                         try:
                             nraw = remove_embed_restriction(raw)
-                        except:
+                        except Exception:
                             continue
                         if nraw != raw:
                             ff.data = nraw
@@ -243,7 +242,7 @@ class PDFOutput(OutputFormatPlugin):
         self.process_fonts()
 
         if self.opts.pdf_use_document_margins and self.stored_page_margins:
-            for href, margins in iteritems(self.stored_page_margins):
+            for href, margins in self.stored_page_margins.items():
                 item = oeb_book.manifest.hrefs.get(href)
                 if item is not None:
                     root = item.data

@@ -13,6 +13,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
+from urllib.parse import urldefrag, urlparse
 
 from lxml import etree
 
@@ -53,7 +54,7 @@ from calibre.ptempfile import TemporaryDirectory
 from calibre.utils.cleantext import clean_xml_chars
 from calibre.utils.localization import __, get_lang
 from calibre.utils.xml_parse import safe_xml_fromstring
-from polyglot.urllib import unquote, urldefrag, urlparse
+from polyglot.urllib import unquote
 
 __all__ = ['OEBReader']
 
@@ -197,7 +198,7 @@ class OEBReader:
                     item.data
                 except KeyboardInterrupt:
                     raise
-                except:
+                except Exception:
                     self.logger.exception(f'Failed to parse content in {item.href}')
                     bad.append(item)
                     self.oeb.manifest.remove(item)
@@ -217,7 +218,7 @@ class OEBReader:
                 if (item.media_type in cdoc or item.media_type[-4:] in ('/xml', '+xml')):
                     try:
                         data = item.data
-                    except:
+                    except Exception:
                         self.oeb.log.exception('Failed to read from manifest '
                                 f'entry with id: {item.id}, ignoring')
                         invalid.add(item)
@@ -236,7 +237,7 @@ class OEBReader:
                         try:
                             href = item.abshref(urlnormalize(href))
                             scheme = urlparse(href).scheme
-                        except:
+                        except Exception:
                             self.oeb.log.exception(
                                 f'Skipping invalid href: {href!r}')
                             continue
@@ -245,7 +246,7 @@ class OEBReader:
                 elif item.media_type in OEB_STYLES:
                     try:
                         urls = list(css_parser.getUrls(data))
-                    except:
+                    except Exception:
                         urls = []
                     for url in urls:
                         href, _ = urldefrag(url)
@@ -358,13 +359,12 @@ class OEBReader:
             item = manifest.ids[idref]
             if item.media_type.lower() in OEB_DOCS and hasattr(item.data, 'xpath') and not getattr(item.data, 'tag', '').endswith('}ncx'):
                 spine.add(item, elem.get('linear'))
+            elif hasattr(item.data, 'tag') and item.data.tag and item.data.tag.endswith('}html'):
+                item.media_type = XHTML_MIME
+                spine.add(item, elem.get('linear'))
             else:
-                if hasattr(item.data, 'tag') and item.data.tag and item.data.tag.endswith('}html'):
-                    item.media_type = XHTML_MIME
-                    spine.add(item, elem.get('linear'))
-                else:
-                    self.oeb.log.warn(f'The item {item.href} is not a XML document.'
-                        ' Removing it from spine.')
+                self.oeb.log.warn(f'The item {item.href} is not a XML document.'
+                    ' Removing it from spine.')
         if len(spine) == 0:
             raise OEBError('Spine is empty')
         self._spine_add_extra()
@@ -434,7 +434,7 @@ class OEBReader:
 
             try:
                 po = int(child.get('playOrder', self.oeb.toc.next_play_order()))
-            except:
+            except Exception:
                 po = self.oeb.toc.next_play_order()
 
             authorElement = xpath(child,

@@ -18,7 +18,6 @@ from calibre.ebooks.conversion import ConversionUserFeedBack
 from calibre.utils.config import OptionParser
 from calibre.utils.localization import localize_user_manual_link
 from calibre.utils.logging import Log
-from polyglot.builtins import iteritems
 
 USAGE = '%prog ' + _('''\
 input_file output_file [options]
@@ -92,11 +91,10 @@ def option_recommendation_to_cli_option(add_option, rec):
     if isinstance(rec.recommended_value, bool):
         attrs['action'] = 'store_false' if rec.recommended_value else \
                           'store_true'
-    else:
-        if isinstance(rec.recommended_value, numbers.Integral):
-            attrs['type'] = 'int'
-        elif isinstance(rec.recommended_value, numbers.Real):
-            attrs['type'] = 'float'
+    elif isinstance(rec.recommended_value, numbers.Integral):
+        attrs['type'] = 'int'
+    elif isinstance(rec.recommended_value, numbers.Real):
+        attrs['type'] = 'float'
 
     if opt.long_switch == 'verbose':
         attrs['action'] = 'count'
@@ -273,7 +271,7 @@ def add_pipeline_options(parser, plumber):
 
               ))
 
-    for group, (desc, options) in iteritems(groups):
+    for group, (desc, options) in groups.items():
         if group:
             group = OptionGroup(parser, group, desc)
             parser.add_option_group(group)
@@ -318,7 +316,7 @@ def create_option_parser(args, log):
         for title in titles:
             try:
                 log('\t'+title)
-            except:
+            except Exception:
                 log('\t'+repr(title))
         log(f'{len(titles)} recipes available')
         raise SystemExit(0)
@@ -370,7 +368,7 @@ def read_sr_patterns(path, log=None):
             line = line.replace('\ue123', '\n')
             try:
                 re.compile(line)
-            except:
+            except Exception:
                 msg = f'Invalid regular expression: {line!r} from file: {path!r}'
                 if log is not None:
                     log.error(msg)

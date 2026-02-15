@@ -8,13 +8,12 @@ __docformat__ = 'restructuredtext en'
 import re
 import uuid
 from collections import Counter, OrderedDict
+from urllib.parse import urlparse
 
 from lxml import etree
 
 from calibre.ebooks import ConversionError
 from calibre.ebooks.oeb.base import TOC, XHTML, XPNSMAP, barename, xml2text
-from polyglot.builtins import itervalues
-from polyglot.urllib import urlparse
 
 
 def XPath(x):
@@ -75,8 +74,7 @@ class DetectStructure:
             regexp = re.compile(opts.toc_filter)
             for node in list(self.oeb.toc.iter()):
                 if not node.title or regexp.search(node.title) is not None:
-                    self.log('Filtering', node.title if node.title else
-                            'empty node', 'from TOC')
+                    self.log('Filtering', node.title or 'empty node', 'from TOC')
                     self.oeb.toc.remove(node)
 
         if opts.page_breaks_before is not None:
@@ -111,7 +109,7 @@ class DetectStructure:
         expr = self.opts.start_reading_at
         try:
             expr = XPath(expr)
-        except:
+        except Exception:
             self.log.warn(
                 f'Invalid start reading at XPath expression, ignoring: {expr}')
             return
@@ -151,7 +149,7 @@ class DetectStructure:
                 ans = XPath(expr)(doc)
                 len(ans)
                 return ans
-            except:
+            except Exception:
                 self.log.warn(f'Invalid chapter expression, ignoring: {expr}')
                 return []
 
@@ -263,13 +261,13 @@ class DetectStructure:
                 ans = XPath(expr)(doc)
                 len(ans)
                 return ans
-            except:
+            except Exception:
                 self.log.warn(f'Invalid ToC expression, ignoring: {expr}')
                 return []
 
         for document in self.oeb.spine:
-            previous_level1 = list(itervalues(added))[-1] if added else None
-            previous_level2 = list(itervalues(added2))[-1] if added2 else None
+            previous_level1 = list(added.values())[-1] if added else None
+            previous_level2 = list(added2.values())[-1] if added2 else None
 
             level1_toc, level1_title = self.get_toc_parts_for_xpath(self.opts.level1_toc)
             for elem in find_matches(level1_toc, document.data):

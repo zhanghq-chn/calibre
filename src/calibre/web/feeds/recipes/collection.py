@@ -26,7 +26,6 @@ from calibre.utils.localization import _
 from calibre.utils.recycle_bin import delete_file
 from calibre.utils.resources import get_path as P
 from calibre.utils.xml_parse import safe_xml_fromstring
-from polyglot.builtins import iteritems
 
 NS = 'http://calibre-ebook.com/recipe_collection'
 E = ElementMaker(namespace=NS, nsmap={None:NS})
@@ -94,7 +93,7 @@ def serialize_collection(mapping_of_recipe_classes):
                 'utf-8')):
         try:
             recipe = serialize_recipe(urn, mapping_of_recipe_classes[urn])
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
             continue
@@ -113,7 +112,7 @@ def serialize_builtin_recipes():
         with open(f, 'rb') as stream:
             try:
                 recipe_class = compile_recipe(stream.read())
-            except:
+            except Exception:
                 print(f'Failed to compile: {f}')
                 raise
         if recipe_class is not None:
@@ -130,7 +129,7 @@ def get_custom_recipe_collection(*args):
     from calibre.web.feeds.recipes import compile_recipe, custom_recipes
     bdir = os.path.dirname(custom_recipes.file_path)
     rmap = {}
-    for id_, x in iteritems(custom_recipes):
+    for id_, x in custom_recipes.items():
         title, fname = x
         recipe = os.path.join(bdir, fname)
         try:
@@ -139,7 +138,7 @@ def get_custom_recipe_collection(*args):
             recipe_class = compile_recipe(recipe)
             if recipe_class is not None:
                 rmap[f'custom:{id_}'] = recipe_class
-        except:
+        except Exception:
             print(f'Failed to load recipe from: {fname!r}')
             import traceback
             traceback.print_exc()
@@ -188,7 +187,7 @@ def add_custom_recipes(script_map):
         id_ = max(keys)+1
     bdir = os.path.dirname(custom_recipes.file_path)
     with custom_recipes:
-        for title, script in iteritems(script_map):
+        for title, script in script_map.items():
             fid = str(id_)
 
             fname = custom_recipe_filename(fid, title)
@@ -215,7 +214,7 @@ def remove_custom_recipe(id_):
         del custom_recipes[id_]
         try:
             delete_file(os.path.join(bdir, fname))
-        except:
+        except Exception:
             pass
 
 
@@ -235,7 +234,7 @@ def get_builtin_recipe_titles():
 
 
 def download_builtin_recipe(urn):
-    import bz2
+    from compression import bz2
 
     from calibre.utils.config_base import prefs
     from calibre.utils.https import get_https_resource_securely
@@ -265,7 +264,7 @@ def get_builtin_recipe_by_title(title, log=None, download_recipe=False):
                     if log is not None:
                         log('Trying to get latest version of recipe:', urn)
                     return download_builtin_recipe(urn)
-                except:
+                except Exception:
                     if log is None:
                         import traceback
                         traceback.print_exc()
@@ -284,7 +283,7 @@ def get_builtin_recipe_by_id(id_, log=None, download_recipe=False):
                     if log is not None:
                         log('Trying to get latest version of recipe:', urn)
                     return download_builtin_recipe(urn)
-                except:
+                except Exception:
                     if log is None:
                         import traceback
                         traceback.print_exc()
@@ -314,7 +313,7 @@ class SchedulerConfig:
             with ExclusiveFile(self.conf_path) as f:
                 try:
                     self.root = safe_xml_fromstring(f.read(), recover=False)
-                except:
+                except Exception:
                     print('Failed to read recipe scheduler config')
                     import traceback
                     traceback.print_exc()
@@ -423,8 +422,7 @@ class SchedulerConfig:
     def serialize_schedule(self, typ, schedule):
         s = E.schedule({'type':typ})
         if typ == 'interval':
-            if schedule < 0.04:
-                schedule = 0.04
+            schedule = max(schedule, 0.04)
             text = f'{schedule:f}'
         elif typ == 'day/time':
             text = f'{int(schedule[0])}:{int(schedule[1])}:{int(schedule[2])}'
@@ -458,7 +456,7 @@ class SchedulerConfig:
     def recipe_needs_to_be_downloaded(self, recipe):
         try:
             typ, sch, ld = self.un_serialize_schedule(recipe)
-        except:
+        except Exception:
             return False
 
         def is_time(now, hour, minute):
@@ -565,7 +563,7 @@ class SchedulerConfig:
         for r in c.get('scheduled_recipes', []):
             try:
                 self.add_old_recipe(r)
-            except:
+            except Exception:
                 continue
         for k in c.keys():
             if k.startswith('recipe_account_info'):
@@ -577,17 +575,17 @@ class SchedulerConfig:
                         urn = f'custom:{int(urn)}'
                     try:
                         username, password = c[k]
-                    except:
+                    except Exception:
                         username = password = ''
                     self.set_account_info(urn, str(username),
                             str(password))
-                except:
+                except Exception:
                     continue
         del c
         self.write_scheduler_file()
         try:
             os.remove(old_conf_path)
-        except:
+        except Exception:
             pass
 
     def add_old_recipe(self, r):
@@ -597,7 +595,7 @@ class SchedulerConfig:
         elif not r['builtin']:
             try:
                 urn = 'custom:{}'.format(int(r['id']))
-            except:
+            except Exception:
                 return
         schedule = r['schedule']
         typ = 'interval'

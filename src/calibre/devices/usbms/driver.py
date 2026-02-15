@@ -20,7 +20,6 @@ from calibre.devices.usbms.cli import CLI
 from calibre.devices.usbms.device import Device
 from calibre.ebooks.metadata.book.json_codec import JsonCodec
 from calibre.prints import debug_print
-from polyglot.builtins import itervalues, string_or_bytes
 
 
 def safe_walk(top, topdown=True, onerror=None, followlinks=False, maxdepth=128):
@@ -115,7 +114,7 @@ class USBMS(CLI, Device):
             with open(os.path.join(prefix, self.DRIVEINFO), 'rb') as f:
                 try:
                     driveinfo = json.loads(f.read(), object_hook=from_json)
-                except:
+                except Exception:
                     driveinfo = None
                 driveinfo = self._update_driveinfo_record(driveinfo, prefix,
                                                           location_code, name)
@@ -206,7 +205,7 @@ class USBMS(CLI, Device):
         elif oncard == 'cardb' and not self._card_b_prefix:
             self.report_progress(1.0, _('Getting list of books on device...'))
             return dummy_bl
-        elif oncard and oncard != 'carda' and oncard != 'cardb':
+        elif oncard and oncard not in {'carda', 'cardb'}:
             self.report_progress(1.0, _('Getting list of books on device...'))
             return dummy_bl
 
@@ -239,8 +238,7 @@ class USBMS(CLI, Device):
             if path_to_ext(filename) in all_formats and self.is_allowed_book_file(filename, path, prefix):
                 try:
                     lpath = os.path.join(path, filename).partition(self.normalize_path(prefix))[2]
-                    if lpath.startswith(os.sep):
-                        lpath = lpath[len(os.sep):]
+                    lpath = lpath.removeprefix(os.sep)
                     lpath = lpath.replace('\\', '/')
                     idx = bl_cache.get(lpath, None)
                     if idx is not None:
@@ -248,15 +246,14 @@ class USBMS(CLI, Device):
                         if self.update_metadata_item(bl[idx]):
                             # print('update_metadata_item returned true')
                             changed = True
-                    else:
-                        if bl.add_book(self.book_from_path(prefix, lpath),
-                                              replace_metadata=False):
-                            changed = True
-                except:  # Probably a filename encoding error
+                    elif bl.add_book(self.book_from_path(prefix, lpath),
+                                          replace_metadata=False):
+                        changed = True
+                except Exception:  # Probably a filename encoding error
                     import traceback
                     traceback.print_exc()
             return changed
-        if isinstance(ebook_dirs, string_or_bytes):
+        if isinstance(ebook_dirs, (str, bytes)):
             ebook_dirs = [ebook_dirs]
         for ebook_dir in ebook_dirs:
             ebook_dir = self.path_to_unicode(ebook_dir)
@@ -294,7 +291,7 @@ class USBMS(CLI, Device):
         # Remove books that are no longer in the filesystem. Cache contains
         # indices into the booklist if book not in filesystem, None otherwise
         # Do the operation in reverse order so indices remain valid
-        for idx in sorted(itervalues(bl_cache), reverse=True, key=lambda x: -1 if x is None else x):
+        for idx in sorted(bl_cache.values(), reverse=True, key=lambda x: -1 if x is None else x):
             if idx is not None:
                 need_sync = True
                 del bl[idx]
@@ -333,7 +330,7 @@ class USBMS(CLI, Device):
                 self.upload_cover(os.path.dirname(filepath),
                                   os.path.splitext(os.path.basename(filepath))[0],
                                   mdata, filepath)
-            except:  # Failure to upload cover is not catastrophic
+            except Exception:  # Failure to upload cover is not catastrophic
                 import traceback
                 traceback.print_exc()
 
@@ -413,7 +410,7 @@ class USBMS(CLI, Device):
         if self.SUPPORTS_SUB_DIRS:
             try:
                 os.removedirs(os.path.dirname(path))
-            except:
+            except Exception:
                 pass
 
     def delete_books(self, paths, end_session=True):
@@ -504,7 +501,7 @@ class USBMS(CLI, Device):
             try:
                 with open(cache_file, 'rb') as f:
                     json_codec.decode_from_file(f, bl, cls.book_class, prefix)
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
                 bl = []

@@ -29,7 +29,6 @@ from calibre.library.comments import merge_comments
 from calibre.utils.config import tweaks
 from calibre.utils.icu import sort_key
 from calibre.utils.localization import ngettext
-from polyglot.builtins import iteritems
 
 DATA_FILES_ICON_NAME = 'unpack-book.png'
 
@@ -110,9 +109,12 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
         from calibre.gui2.dialogs.data_files_manager import DataFilesManager
         db = self.gui.current_db
         ids = self.gui.library_view.get_selected_ids()
+        num = len(ids)
         for book_id in ids:
-            d = DataFilesManager(db, book_id, self.gui)
+            d = DataFilesManager(db, book_id, self.gui, num - 1)
             d.exec()
+            if d.num_left < 1:
+                break
         cr = self.gui.library_view.currentIndex().row()
         self.gui.library_view.model().refresh_ids(ids, cr)
 
@@ -244,7 +246,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
     def cleanup_bulk_download(self, tdir, *args):
         try:
             shutil.rmtree(tdir, ignore_errors=True)
-        except:
+        except Exception:
             pass
 
     def metadata_downloaded(self, job):
@@ -380,7 +382,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
                     failed_ids |= d.rejected_ids
                     restrict_to_failed = True
                 nid_map = {}
-                for book_id, (changed, mi) in iteritems(d.accepted):
+                for book_id, (changed, mi) in d.accepted.items():
                     if mi is None:  # discarded
                         continue
                     if changed:
@@ -568,7 +570,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
 
     def books_dropped(self, merge_map):
         covers_replaced = False
-        for dest_id, src_ids in iteritems(merge_map):
+        for dest_id, src_ids in merge_map.items():
             if not self.confirm_large_merge(len(src_ids) + 1):
                 continue
             from calibre.gui2.dialogs.confirm_merge import merge_drop
@@ -596,7 +598,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
         from calibre.gui2.dialogs.confirm_merge import confirm_merge
         if self.gui.current_view() is not self.gui.library_view:
             return
-        rows = self.gui.library_view.indices_for_merge()
+        rows = self.gui.library_view.rows_for_merge()
         if not rows or len(rows) == 0:
             return error_dialog(self.gui, _('Cannot merge books'),
                                 _('No books selected'), show=True)
@@ -722,7 +724,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
         if d.result() == QDialog.DialogCode.Accepted:
             to_rename = d.to_rename  # dict of new text to old ids
             to_delete = d.to_delete  # list of ids
-            for old_id, new_name in iteritems(to_rename):
+            for old_id, new_name in to_rename.items():
                 model.rename_collection(old_id, new_name=str(new_name))
             for item in to_delete:
                 model.delete_collection_using_id(item)
@@ -750,7 +752,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
         '''
         if title is None:
             title = _('Applying changed metadata')
-        self.apply_id_map = list(iteritems(id_map))
+        self.apply_id_map = list(id_map.items())
         self.apply_current_idx = 0
         self.apply_failures = []
         self.applied_ids = set()
@@ -807,7 +809,7 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
                 old_tags = db.tags(book_id, index_is_id=True)
                 if old_tags:
                     tags = [x.strip() for x in old_tags.split(',')] + (
-                            mi.tags if mi.tags else [])
+                            mi.tags or [])
                     mi.tags = list(set(tags))
             if self._am_merge_comments:
                 old_comments = db.new_api.field_for('comments', book_id)
@@ -816,14 +818,14 @@ class EditMetadataAction(InterfaceActionWithLibraryDrop):
             db.set_metadata(book_id, mi, commit=False, set_title=set_title,
                     set_authors=set_authors, notify=False)
             self.applied_ids.add(book_id)
-        except:
+        except Exception:
             import traceback
             self.apply_failures.append((book_id, traceback.format_exc()))
 
         try:
             if mi.cover:
                 os.remove(mi.cover)
-        except:
+        except Exception:
             pass
 
     def finalize_apply(self):

@@ -122,10 +122,9 @@ class respektRecipe(BasicNewsRecipe):
                     text = child.text_content()
                     if next.text:
                         next.text = next.text + u' • ' + text
-                    else:
-                        if next.getchildren():
-                            next_child = next.getchildren()[0]
-                            next_child.text = next_child.text + u' • ' + text
+                    elif next.getchildren():
+                        next_child = next.getchildren()[0]
+                        next_child.text = next_child.text + u' • ' + text
                     par.getparent().remove(par)
         # Insert text length
         text = root.xpath("//div[@id='postcontent']")[0]
@@ -145,7 +144,7 @@ class respektRecipe(BasicNewsRecipe):
                 t = root.xpath("//span[@class='post-author-name']")[0]
                 t.text = ('Autor: ' + t.text + ' ')
             root.xpath("//div[@class='authorship-names']")[0].append(E.span(article_length))
-        except:
+        except Exception:
             pass
         # Make images visible
         pictures = root.xpath('//picture')
@@ -169,6 +168,6 @@ class respektRecipe(BasicNewsRecipe):
             e = E.h2({'class':'post-subtitle'})
             e.text = o.text
             o.getparent().replace(o,e)
-        except:
+        except Exception:
             pass
         return BeautifulSoup(lxml.etree.tostring(root,encoding='unicode'))

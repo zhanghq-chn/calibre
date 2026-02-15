@@ -191,8 +191,8 @@ class TextBlock(etree.XSLTExtension):
             pidx = gp.index(p)
             children = list(p)[idx:]
             t = children[-1].tail
-            t = t if t else ''
-            children[-1].tail = t + (p.tail if p.tail else '')
+            t = t or ''
+            children[-1].tail = t + (p.tail or '')
             p.tail = ''
             pattrib = dict(**p.attrib) if p.tag == 'Span' else {}
             for child in children:
@@ -321,7 +321,7 @@ class Styles(etree.XSLTExtension):
     def px_to_pt(self, px):
         try:
             return px * 72/166
-        except:
+        except Exception:
             return None
 
     def color(self, val):
@@ -333,7 +333,7 @@ class Styles(etree.XSLTExtension):
             if a == 0:
                 return f'rgb({r},{g},{b})'
             return f'rgba({r},{g},{b},{1.0 - a / 255.0:f})'
-        except:
+        except Exception:
             return None
 
     def get_block_styles(self, node):
@@ -364,7 +364,7 @@ class Styles(etree.XSLTExtension):
     def to_num(self, val, factor=1.):
         try:
             return float(val)*factor
-        except:
+        except Exception:
             return None
 
     def get_text_styles(self, node):

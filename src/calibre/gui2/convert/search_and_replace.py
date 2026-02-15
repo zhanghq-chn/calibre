@@ -4,6 +4,7 @@ __docformat__ = 'restructuredtext en'
 
 import codecs
 import json
+from contextlib import suppress
 
 from qt.core import Qt, QTableWidgetItem
 
@@ -167,14 +168,8 @@ class SearchAndReplaceWidget(Widget, Ui_Form):
     def break_cycles(self):
         Widget.break_cycles(self)
 
-        def d(x):
-            try:
-                x.disconnect()
-            except:
-                pass
-
-        d(self.sr_search)
-
+        with suppress(TypeError):
+            self.sr_search.doc_update.disconnect(self.update_doc)
         self.sr_search.break_cycles()
 
     def update_doc(self, doc):
@@ -242,7 +237,7 @@ class SearchAndReplaceWidget(Widget, Ui_Form):
             rowItems = json.loads(val)
             if not isinstance(rowItems, list):
                 rowItems = []
-        except:
+        except Exception:
             rowItems = []
 
         if len(rowItems) == 0:
@@ -272,7 +267,7 @@ class SearchAndReplaceWidget(Widget, Ui_Form):
                 if name in getattr(recs, 'disabled_options', []):
                     self.search_replace.setDisabled(True)
             elif name.startswith('sr'):
-                legacy[name] = val if val else ''
+                legacy[name] = val or ''
             else:
                 rest[name] = val
 

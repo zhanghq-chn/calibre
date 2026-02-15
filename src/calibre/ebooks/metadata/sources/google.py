@@ -75,8 +75,7 @@ def XPath(x):
 
 
 def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
-    from lxml import etree
-
+    from calibre.utils.xml_parse import safe_xml_fromstring
     # total_results  = XPath('//openSearch:totalResults')
     # start_index    = XPath('//openSearch:startIndex')
     # items_per_page = XPath('//openSearch:itemsPerPage')
@@ -101,7 +100,7 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
                 ans = ans[0].text
                 if ans and ans.strip():
                     return ans.strip()
-        except:
+        except Exception:
             log.exception('Programming error:')
         return None
 
@@ -111,10 +110,7 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
             with open(os.path.join(tempfile.gettempdir(), 'Google-' + details_url.split('/')[-1] + '.xml'), 'wb') as f:
                 f.write(raw)
                 print('Book details saved to:', f.name, file=sys.stderr)
-        feed = etree.fromstring(
-            xml_to_unicode(clean_ascii_chars(raw), strip_encoding_pats=True)[0],
-            parser=etree.XMLParser(recover=True, no_network=True, resolve_entities=False)
-        )
+        feed = safe_xml_fromstring(xml_to_unicode(clean_ascii_chars(raw), strip_encoding_pats=True)[0])
         return entry(feed)[0]
 
     if isinstance(entry_, str):
@@ -170,7 +166,7 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
             for tag in atags:
                 if tag not in tags:
                     tags.append(tag)
-    except:
+    except Exception:
         log.exception('Failed to parse tags:')
         tags = []
     if tags:
@@ -183,7 +179,7 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
         try:
             default = utcnow().replace(day=15)
             mi.pubdate = parse_date(pubdate, assume_utc=True, default=default)
-        except:
+        except Exception:
             log.error('Failed to parse pubdate %r' % pubdate)
 
     # Cover
@@ -202,7 +198,7 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
 class GoogleBooks(Source):
 
     name = 'Google'
-    version = (1, 1, 1)
+    version = (1, 1, 3)
     minimum_calibre_version = (2, 80, 0)
     description = _('Downloads metadata and covers from Google Books')
 
@@ -398,6 +394,7 @@ class GoogleBooks(Source):
         timeout=30
     ):
         from calibre.utils.filenames import ascii_text
+        from polyglot.urllib import urlparse
         isbn = check_isbn(identifiers.get('isbn', None))
         q = []
         strip_punc_pat = regex.compile(r'[\p{C}|\p{M}|\p{P}|\p{S}|\p{Z}]+', regex.UNICODE)
@@ -433,14 +430,20 @@ class GoogleBooks(Source):
         se = search_engines_module()
         br = se.google_specialize_browser(se.browser())
         if not has_google_id:
-            url = se.google_format_query(q, tbm='bks')
+            url = se.google_format_query(q, site='books.google.com')
             log('Making query:', url)
             r = []
             root = se.query(br, url, 'google', timeout=timeout, save_raw=r.append)
             pat = re.compile(r'id=([^&]+)')
             for q in se.google_parse_results(root, r[0], log=log, ignore_uncached=False):
                 m = pat.search(q.url)
-                if m is None or not q.url.startswith('https://books.google'):
+                if m is None or not q.url:
+                    continue
+                try:
+                    purl = urlparse(q.url)
+                except Exception:
+                    continue
+                if not purl.hostname.startswith('books.google'):
                     continue
                 google_ids.append(m.group(1))
 
@@ -469,7 +472,7 @@ class GoogleBooks(Source):
                     ans = self.postprocess_downloaded_google_metadata(ans, relevance)
                     result_queue.put(ans)
                     found = True
-            except:
+            except Exception:
                 log.exception('Failed to get metadata for google books id:', gid)
             if abort.is_set():
                 break
@@ -487,7 +490,7 @@ class GoogleBooks(Source):
         identifiers={},
         timeout=30
     ):
-        from lxml import etree
+        from calibre.utils.xml_parse import safe_xml_fromstring
         entry = XPath('//atom:entry')
         identifiers = identifiers.copy()
         br = self.browser
@@ -518,10 +521,7 @@ class GoogleBooks(Source):
                 return False, as_unicode(e)
 
             try:
-                feed = etree.fromstring(
-                    xml_to_unicode(clean_ascii_chars(raw), strip_encoding_pats=True)[0],
-                    parser=etree.XMLParser(recover=True, no_network=True, resolve_entities=False)
-                )
+                feed = safe_xml_fromstring(xml_to_unicode(clean_ascii_chars(raw), strip_encoding_pats=True)[0])
                 return True, entry(feed)
             except Exception as e:
                 log.exception('Failed to parse identify results')
@@ -570,7 +570,7 @@ if __name__ == '__main__':  # tests {{{
     ]),
 
     ({
-        # requires using web search to find the book
+        # requires using web search to find the book, but web search is broken currently
         'title': 'Dragon Done It',
         'authors': ['Eric Flint'],
     }, [
@@ -579,6 +579,6 @@ if __name__ == '__main__':  # tests {{{
     ]),
 
     ]
-    test_identify_plugin(GoogleBooks.name, tests[:])
+    test_identify_plugin(GoogleBooks.name, tests)
 
 # }}}

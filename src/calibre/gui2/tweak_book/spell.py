@@ -79,7 +79,6 @@ from calibre.utils.icu import contains, primary_contains, primary_sort_key, sort
 from calibre.utils.localization import calibre_langcode_to_name, canonicalize_lang, get_lang, get_language
 from calibre.utils.resources import get_path as P
 from calibre_extensions.progress_indicator import set_no_activate_on_click
-from polyglot.builtins import iteritems
 
 LANG = 0
 COUNTRY = 1
@@ -150,7 +149,7 @@ class AddDictionary(QDialog):  # {{{
         def k(dictionary):
             return sort_key(calibre_langcode_to_name(dictionary['primary_locale'].langcode))
 
-        for data in sorted(catalog_online_dictionaries(), key=lambda x:k(x)):
+        for data in sorted(catalog_online_dictionaries(), key=k):
             if languages.get(data['primary_locale'].langcode, {}).get(data['primary_locale'].countrycode, None):
                 continue
             local = calibre_langcode_to_name(data['primary_locale'].langcode)
@@ -222,7 +221,7 @@ class AddDictionary(QDialog):  # {{{
         oxt = str(self.path.text())
         try:
             num = import_from_oxt(oxt, nick)
-        except:
+        except Exception:
             import traceback
             return error_dialog(self, _('Failed to import dictionaries'), _(
                 'Failed to import dictionaries from %s. Click "Show details" for more information') % oxt,
@@ -240,7 +239,7 @@ class AddDictionary(QDialog):  # {{{
                 'A dictionary with the nick name "%s" already exists.') % nick, show=True)
         try:
             num = import_from_online(directory, nick)
-        except:
+        except Exception:
             import traceback
             return error_dialog(self, _('Failed to download dictionaries'), _(
                 'Failed to download dictionaries for "{}". Click "Show details" for more information').format(data['text']),
@@ -852,7 +851,7 @@ class WordsModel(QAbstractTableModel):
         self.endResetModel()
 
     def update_counts(self, emit_signal=True):
-        self.counts = (len([None for w, recognized in iteritems(self.spell_map) if not recognized]), len(self.words))
+        self.counts = (len([None for w, recognized in self.spell_map.items() if not recognized]), len(self.words))
         if emit_signal:
             self.counts_changed.emit()
 
@@ -1553,7 +1552,7 @@ class SpellCheck(Dialog):
         try:
             words = get_all_words(current_container(), dictionaries.default_locale, excluded_files=self.excluded_files)
             spell_map = {w:dictionaries.recognized(*w) for w in words}
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
             words = traceback.format_exc()
@@ -1655,7 +1654,7 @@ def find_next(word, locations, current_editor, current_editor_name,
 
     if current_editor_name not in files:
         current_editor_name = None
-        locations = [(fname, {l.original_word for l in _locations}, False) for fname, _locations in iteritems(files)]
+        locations = [(fname, {l.original_word for l in _locations}, False) for fname, _locations in files.items()]
     else:
         # Re-order the list of locations to search so that we search in the
         # current editor first

@@ -5,6 +5,7 @@ import io
 
 # Imports {{{
 import os
+import queue
 import re
 import sys
 import time
@@ -56,8 +57,6 @@ from calibre.utils.filenames import ascii_filename
 from calibre.utils.img import scale_image
 from calibre.utils.ipc.job import BaseJob
 from calibre.utils.localization import ngettext
-from polyglot import queue
-from polyglot.builtins import string_or_unicode
 
 # }}}
 
@@ -94,7 +93,7 @@ class DeviceJob(BaseJob):  # {{{
 
         try:
             self.callback_on_done(self)
-        except:
+        except Exception:
             pass
         if DEBUG:
             prints('DeviceJob:', self.id, self.description,
@@ -255,7 +254,7 @@ class DeviceManager(Thread):  # {{{
                 continue
             except OpenFailed:
                 raise
-            except:
+            except Exception:
                 tb = traceback.format_exc()
                 if DEBUG or tb not in self.reported_errors:
                     self.reported_errors.add(tb)
@@ -296,7 +295,7 @@ class DeviceManager(Thread):  # {{{
                 break
         try:
             self.connected_device.post_yank_cleanup()
-        except:
+        except Exception:
             pass
         if self.connected_device in self.ejected_devices:
             self.ejected_devices.remove(self.connected_device)
@@ -345,7 +344,7 @@ class DeviceManager(Thread):  # {{{
             for dev in self.unmanaged_devices:
                 try:
                     cd = dev.detect_managed_devices(self.scanner.devices)
-                except:
+                except Exception:
                     prints(f'Error during device detection for {dev}:')
                     traceback.print_exc()
                 else:
@@ -358,7 +357,7 @@ class DeviceManager(Thread):  # {{{
                             if e.only_once_id not in self.open_feedback_only_once_seen:
                                 self.open_feedback_only_once_seen.add(e.only_once_id)
                                 self.open_feedback_msg(e.device_name, e)
-                        except:
+                        except Exception:
                             prints(f'Error while trying to open {cd} (Driver: {dev})')
                             traceback.print_exc()
                         else:
@@ -428,7 +427,7 @@ class DeviceManager(Thread):  # {{{
         try:
             name = dev.__class__.__name__
             dev.startup()
-        except:
+        except Exception:
             prints(f'Startup method for device {name} threw exception')
             traceback.print_exc()
 
@@ -502,7 +501,7 @@ class DeviceManager(Thread):  # {{{
         for p in self.devices:
             try:
                 p.shutdown()
-            except:
+            except Exception:
                 pass
 
     def create_job_step(self, func, done, description, to_job, args=[], kwargs={}):
@@ -522,7 +521,7 @@ class DeviceManager(Thread):  # {{{
     def has_card(self):
         try:
             return bool(self.device.card_prefix())
-        except:
+        except Exception:
             return False
 
     def _debug_detection(self):
@@ -542,7 +541,7 @@ class DeviceManager(Thread):  # {{{
         info = self.device.get_device_information(end_session=False)
         if len(info) < 5:
             info = tuple(list(info) + [{}])
-        info = [i.replace('\x00', '').replace('\x01', '') if isinstance(i, string_or_unicode) else i
+        info = [i.replace('\x00', '').replace('\x01', '') if isinstance(i, str) else i
                  for i in info]
         cp = self.device.card_prefix(end_session=False)
         fs = self.device.free_space()
@@ -654,7 +653,7 @@ class DeviceManager(Thread):  # {{{
                                 if nuke_comments is not None:
                                     mi.comments = nuke_comments
                                 set_metadata(stream, newmi, stream_type=ext)
-                        except:
+                        except Exception:
                             if DEBUG:
                                 prints(traceback.format_exc(), file=sys.__stdout__)
 
@@ -667,7 +666,7 @@ class DeviceManager(Thread):  # {{{
                     try:
                         if mi.cover:
                             os.remove(mi.cover)
-                    except:
+                    except Exception:
                         pass
 
     def upload_books(self, done, files, names, on_card=None, titles=None,
@@ -758,7 +757,7 @@ class DeviceManager(Thread):  # {{{
             d = self.dynamic_plugins.get(name, None)
             if d:
                 return True
-        except:
+        except Exception:
             pass
         return False
 
@@ -913,19 +912,18 @@ class DeviceMenu(QMenu):  # {{{
             if action.dest in ('main:', 'carda:0', 'cardb:0'):
                 if not enable:
                     action.setEnabled(False)
-                else:
-                    if action.dest == 'main:':
+                elif action.dest == 'main:':
+                    action.setEnabled(True)
+                elif action.dest == 'carda:0':
+                    if card_prefix and card_prefix[0] is not None:
                         action.setEnabled(True)
-                    elif action.dest == 'carda:0':
-                        if card_prefix and card_prefix[0] is not None:
-                            action.setEnabled(True)
-                        else:
-                            action.setEnabled(False)
-                    elif action.dest == 'cardb:0':
-                        if card_prefix and card_prefix[1] is not None:
-                            action.setEnabled(True)
-                        else:
-                            action.setEnabled(False)
+                    else:
+                        action.setEnabled(False)
+                elif action.dest == 'cardb:0':
+                    if card_prefix and card_prefix[1] is not None:
+                        action.setEnabled(True)
+                    else:
+                        action.setEnabled(False)
 
         annot_enable = enable and getattr(device, 'SUPPORTS_ANNOTATIONS', False)
         self.annotation_action.setEnabled(annot_enable)
@@ -1120,8 +1118,7 @@ class DeviceMixin:  # {{{
             func = {UserFeedback.ERROR:error_dialog,
                     UserFeedback.WARNING:warning_dialog,
                     UserFeedback.INFO:info_dialog}[ex.level]
-            return func(self, _('Failed'), ex.msg, det_msg=ex.details if
-                    ex.details else '', show=True)
+            return func(self, _('Failed'), ex.msg, det_msg=ex.details or '', show=True)
 
         try:
             if 'Could not read 32 bytes on the control bus.' in \
@@ -1131,17 +1128,17 @@ class DeviceMixin:  # {{{
                              'device. Please unplug and reconnect the device '
                              'or reboot.')).show()
                 return
-        except:
+        except Exception:
             pass
         if getattr(job, 'exception', None).__class__.__name__ == 'MTPInvalidSendPathError':
             try:
                 from calibre.gui2.device_drivers.mtp_config import SendError
                 return SendError(self, job.exception).exec()
-            except:
+            except Exception:
                 traceback.print_exc()
         try:
             prints(job.details, file=sys.stderr)
-        except:
+        except Exception:
             pass
         if not self.device_error_dialog.isVisible():
             self.device_error_dialog.set_details(job.details)
@@ -1316,7 +1313,7 @@ class DeviceMixin:  # {{{
             if not self.current_view().currentIndex().isValid():
                 self.current_view().set_current_row()
             self.current_view().refresh_book_details()
-        except:
+        except Exception:
             traceback.print_exc()
 
     def dispatch_sync_event(self, dest, delete, specific):
@@ -1399,7 +1396,7 @@ class DeviceMixin:  # {{{
                                  self.device_manager.device.THUMBNAIL_WIDTH,
                                  self.device_manager.device.THUMBNAIL_HEIGHT,
                                  preserve_aspect_ratio=False)
-            except:
+            except Exception:
                 pass
             return
         ht = self.device_manager.device.THUMBNAIL_HEIGHT \
@@ -1407,7 +1404,7 @@ class DeviceMixin:  # {{{
         try:
             return scale_image(data, ht, ht,
                     compression_quality=self.device_manager.device.THUMBNAIL_COMPRESSION_QUALITY)
-        except:
+        except Exception:
             pass
 
     def sync_catalogs(self, send_ids=None, do_auto_convert=True):
@@ -1472,7 +1469,7 @@ class DeviceMixin:  # {{{
         try:
             ans = self.library_view.model().db.new_api.pref('news_to_be_synced',
                     [])
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
         return set(ans)
@@ -1482,7 +1479,7 @@ class DeviceMixin:  # {{{
         try:
             self.library_view.model().db.new_api.set_pref('news_to_be_synced',
                     list(ids))
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
 
@@ -1539,11 +1536,11 @@ class DeviceMixin:  # {{{
                 on_card = space.get(sorted(space.keys(), reverse=True)[0], None)
                 try:
                     total_size = sum(os.stat(f).st_size for f in files)
-                except:
+                except Exception:
                     try:
                         import traceback
                         traceback.print_exc()
-                    except:
+                    except Exception:
                         pass
                     total_size = self.location_manager.free[0]
                 loc = tweaks['send_news_to_device_location']
@@ -1623,11 +1620,10 @@ class DeviceMixin:  # {{{
                         auto.append(id)
                     else:
                         bad.append(self.library_view.model().db.title(id, index_is_id=True))
+                elif specific_format in list(set(settings.format_map).intersection(set(available_output_formats()))):
+                    auto.append(id)
                 else:
-                    if specific_format in list(set(settings.format_map).intersection(set(available_output_formats()))):
-                        auto.append(id)
-                    else:
-                        bad.append(self.library_view.model().db.title(id, index_is_id=True))
+                    bad.append(self.library_view.model().db.title(id, index_is_id=True))
 
         if auto != []:
             format = specific_format if specific_format in \
@@ -1743,7 +1739,7 @@ class DeviceMixin:  # {{{
         try:
             self.device_manager.add_books_to_metadata(job.result,
                     metadata, self.booklists())
-        except:
+        except Exception:
             traceback.print_exc()
             raise
 
@@ -1776,7 +1772,7 @@ class DeviceMixin:  # {{{
                             'KEEP_TEMP_FILES_AFTER_UPLOAD', False)
                     if rem and 'caltmpfmt.' in f:
                         os.remove(f)
-                except:
+                except Exception:
                     pass
 
     def update_metadata_on_device(self):
@@ -1861,7 +1857,7 @@ class DeviceMixin:  # {{{
         # library view. In this case, simply give up
         try:
             db = self.library_view.model().db
-        except:
+        except Exception:
             return False
 
         # Define the cleaning function
@@ -1949,7 +1945,7 @@ class DeviceMixin:  # {{{
                          max(book.thumbnail[0], book.thumbnail[1]) != desired_thumbnail_height
                         )
                        )
-            except:
+            except Exception:
                 return True
 
         def get_by_author(book, d, author):
@@ -2066,7 +2062,7 @@ class DeviceMixin:  # {{{
                            len(book_ids_to_refresh), 'books')
                     self.library_view.model().refresh_ids(book_ids_to_refresh,
                                       current_row=self.library_view.currentIndex().row())
-                except:
+                except Exception:
                     # This shouldn't ever happen, but just in case ...
                     traceback.print_exc()
 
@@ -2088,15 +2084,14 @@ class DeviceMixin:  # {{{
                             mi = db.new_api.get_metadata(id_, get_cover=True)
                             self.update_thumbnail(mi)
                             metadata.append(mi)
-                        except:
+                        except Exception:
                             prints('Problem creating temporary file for', fmt_name)
                             traceback.print_exc()
-                    else:
-                        if DEBUG:
-                            prints("DeviceJob: book doesn't have that format")
+                    elif DEBUG:
+                        prints("DeviceJob: book doesn't have that format")
                 if files:
                     self.upload_books(files, names, metadata)
-            except:
+            except Exception:
                 # Shouldn't ever happen, but just in case
                 traceback.print_exc()
 
@@ -2110,7 +2105,7 @@ class DeviceMixin:  # {{{
                                  show=False,
                                  show_copy_button=True)
                     d.show()
-            except:
+            except Exception:
                 traceback.print_exc()
 
         debug_print('DeviceJob: set_books_in_library finished: time=', time.time() - start_time)

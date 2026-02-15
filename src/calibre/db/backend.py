@@ -16,6 +16,7 @@ import sys
 import time
 import uuid
 from contextlib import closing, suppress
+from datetime import datetime
 from functools import partial
 
 import apsw
@@ -48,6 +49,7 @@ from calibre.db.tables import (
     SizeTable,
     UUIDTable,
 )
+from calibre.db.utils import atomic_write
 from calibre.ebooks.metadata import author_to_author_sort, title_sort
 from calibre.library.field_metadata import FieldMetadata
 from calibre.ptempfile import PersistentTemporaryFile, TemporaryFile
@@ -72,7 +74,10 @@ from calibre.utils.formatter_functions import compile_user_template_functions, f
 from calibre.utils.icu import lower as icu_lower
 from calibre.utils.icu import sort_key
 from calibre.utils.resources import get_path as P
-from polyglot.builtins import cmp, iteritems, itervalues, native_string_type, reraise, string_or_bytes
+from polyglot.builtins import cmp, reraise
+
+if iswindows:
+    from calibre_extensions import winutil
 
 # }}}
 
@@ -113,7 +118,7 @@ class DBPrefs(dict):  # {{{
         for key, val in self.db.conn.get('SELECT key,val FROM preferences'):
             try:
                 val = self.raw_to_object(val)
-            except:
+            except Exception:
                 prints('Failed to read value for:', key, 'from db')
                 continue
             dict.__setitem__(self, key, val)
@@ -185,7 +190,7 @@ class DBPrefs(dict):  # {{{
                 data = data.encode('utf-8')
             with open(to_filename, 'wb') as f:
                 f.write(data)
-        except:
+        except Exception:
             import traceback
             traceback.print_exc()
 
@@ -204,12 +209,12 @@ def pynocase(one, two, encoding='utf-8'):
     if isbytestring(one):
         try:
             one = one.decode(encoding, 'replace')
-        except:
+        except Exception:
             pass
     if isbytestring(two):
         try:
             two = two.decode(encoding, 'replace')
-        except:
+        except Exception:
             pass
     return cmp(one.lower(), two.lower())
 
@@ -450,7 +455,7 @@ def rmtree_with_retry(path, sleep_time=1):
     except OSError as e:
         if e.errno == errno.ENOENT and not os.path.exists(path):
             return
-        if iswindows:
+        if iswindows and e.winerror == winutil.ERROR_SHARING_VIOLATION:
             time.sleep(sleep_time)  # In case something has temporarily locked a file
         shutil.rmtree(path)
 
@@ -551,6 +556,10 @@ class DB:
         self.initialize_notes()
 
     @property
+    def max_number_of_variables(self) -> int:
+        return self.conn.limit(apsw.SQLITE_LIMIT_VARIABLE_NUMBER)
+
+    @property
     def last_expired_trash_at(self) -> float:
         return float(self.prefs['last_expired_trash_at'])
 
@@ -577,7 +586,7 @@ class DB:
             # Only apply default prefs to a new database
             for i, key in enumerate(default_prefs):
                 # be sure that prefs not to be copied are listed below
-                if restore_all_prefs or key not in frozenset(['news_to_be_synced']):
+                if restore_all_prefs or key != 'news_to_be_synced':
                     self.prefs[key] = default_prefs[key]
                     progress_callback(_('restored preference ') + key, i+1)
             if 'field_metadata' in default_prefs:
@@ -614,7 +623,7 @@ class DB:
         ('path', True), ('publisher', False), ('rating', False),
         ('author_sort', False), ('sort', False), ('timestamp', False),
         ('uuid', False), ('comments', True), ('id', False), ('pubdate', False),
-        ('last_modified', False), ('size', False), ('languages', False),
+        ('last_modified', False), ('size', False), ('languages', False), ('pages', False),
         ]
         defs['popup_book_display_fields'] = [('title', True)] + [(f[0], True) for f in defs['book_display_fields'] if f[0] != 'title']
         defs['qv_display_fields'] = [('title', True), ('authors', True), ('series', True)]
@@ -628,6 +637,16 @@ class DB:
         defs['styled_columns'] = {}
         defs['edit_metadata_ignore_display_order'] = False
         defs['fts_enabled'] = False
+        defs['column_tooltip_templates'] = {}
+        defs['bookshelf_grouping_mode'] = ''
+        defs['bookshelf_title_template'] = '{title}'
+        defs['bookshelf_author_template'] = ''
+        defs['bookshelf_spine_size_template'] = '{pages}'
+        defs['bookshelf_icon_rules'] = []
+
+        # Migrate the beta bookshelf_grouping_mode
+        if self.prefs.get('bookshelf_grouping_mode', '') == 'none':
+            self.prefs.set('bookshelf_grouping_mode', '')
 
         # Migrate the bool tristate tweak
         defs['bools_are_tristate'] = \
@@ -648,7 +667,7 @@ class DB:
                         rules = migrate_old_rule(self.field_metadata, templ)
                         for templ in rules:
                             old_rules.append((col, templ))
-                    except:
+                    except Exception:
                         pass
             if old_rules:
                 self.prefs['column_color_rules'] += old_rules
@@ -673,7 +692,7 @@ class DB:
                 for t in ogst:
                     ngst[icu_lower(t)] = ogst[t]
                 self.prefs.set('grouped_search_terms', ngst)
-            except:
+            except Exception:
                 pass
 
         # migrate the gui_restriction preference to a virtual library
@@ -703,10 +722,10 @@ class DB:
                 catmap[ucl] = []
             catmap[ucl].append(uc)
         cats_changed = False
-        for uc in catmap:
-            if len(catmap[uc]) > 1:
-                prints('found user category case overlap', catmap[uc])
-                cat = catmap[uc][0]
+        for uc, user_cat in catmap.items():
+            if len(user_cat) > 1:
+                prints('found user category case overlap', user_cat)
+                cat = user_cat[0]
                 suffix = 1
                 while icu_lower(cat + str(suffix)) in catmap:
                     suffix += 1
@@ -899,7 +918,7 @@ class DB:
     def initialize_tables(self):  # {{{
         tables = self.tables = {}
         for col in ('title', 'sort', 'author_sort', 'series_index', 'comments',
-                'timestamp', 'pubdate', 'uuid', 'path', 'cover',
+                'timestamp', 'pubdate', 'uuid', 'path', 'cover', 'pages',
                 'last_modified'):
             metadata = self.field_metadata[col].copy()
             if col == 'comments':
@@ -930,13 +949,13 @@ class DB:
             'rating':5, 'tags':6, 'comments':7, 'series':8, 'publisher':9,
             'series_index':10, 'sort':11, 'author_sort':12, 'formats':13,
             'path':14, 'pubdate':15, 'uuid':16, 'cover':17, 'au_map':18,
-            'last_modified':19, 'identifiers':20, 'languages':21,
+            'last_modified':19, 'identifiers':20, 'languages':21, 'pages':22,
         }
 
-        for k,v in iteritems(self.FIELD_MAP):
+        for k,v in self.FIELD_MAP.items():
             self.field_metadata.set_field_record_index(k, v, prefer_custom=False)
 
-        base = max(itervalues(self.FIELD_MAP))
+        base = max(self.FIELD_MAP.values())
 
         for label_ in sorted(self.custom_column_label_map):
             data = self.custom_column_label_map[label_]
@@ -968,11 +987,10 @@ class DB:
                         metadata['column'] = 'extra'
                         metadata['table'] = link_table
                         tables[label] = OneToOneTable(label, metadata)
+            elif data['datatype'] == 'composite':
+                tables[label] = CompositeTable(label, metadata)
             else:
-                if data['datatype'] == 'composite':
-                    tables[label] = CompositeTable(label, metadata)
-                else:
-                    tables[label] = OneToOneTable(label, metadata)
+                tables[label] = OneToOneTable(label, metadata)
 
         self.FIELD_MAP['ondevice'] = base = base+1
         self.field_metadata.set_field_record_index('ondevice', base, prefer_custom=False)
@@ -1252,7 +1270,7 @@ class DB:
             dt = 'INT'
         elif datatype in ('text', 'comments', 'series', 'composite', 'enumeration'):
             dt = 'TEXT'
-        elif datatype in ('float',):
+        elif datatype == 'float':
             dt = 'REAL'
         elif datatype == 'datetime':
             dt = 'timestamp'
@@ -1444,8 +1462,11 @@ class DB:
                 finally:
                     self.reopen()
 
-    def vacuum(self, include_fts_db, include_notes_db):
+    def vacuum(self, include_fts_db, include_notes_db, rebuild_annotations_fts):
         self.execute('VACUUM')
+        if rebuild_annotations_fts:
+            self.execute('INSERT INTO annotations_fts(annotations_fts) VALUES("rebuild");')
+            self.execute('INSERT INTO annotations_fts_stemmed(annotations_fts_stemmed) VALUES("rebuild");')
         if self.fts_enabled and include_fts_db:
             self.fts.vacuum()
         if include_notes_db:
@@ -1463,18 +1484,17 @@ class DB:
     def initialize_database(self):
         metadata_sqlite = P('metadata_sqlite.sql', data=True,
                 allow_user_override=False).decode('utf-8')
-        cur = self.conn.cursor()
-        cur.execute('BEGIN EXCLUSIVE TRANSACTION')
-        try:
-            cur.execute(metadata_sqlite)
-        except:
-            cur.execute('ROLLBACK')
-            raise
-        else:
-            cur.execute('COMMIT')
-        if self.user_version == 0:
-            self.user_version = 1
+        with self.conn:
+            self.conn.cursor().execute(metadata_sqlite)
+            if self.user_version == 0:
+                self.user_version = 1
     # }}}
+
+    def __enter__(self):
+        self.conn.__enter__()
+
+    def __exit__(self, exc_type, exc_value, tb):
+        self.conn.__exit__(exc_type, exc_value, tb)
 
     def clone_for_readonly_access(self, dest_dir: str) -> str:
         dbpath = os.path.abspath(self.conn.db_filename('main'))
@@ -1588,10 +1608,10 @@ class DB:
         '''
 
         with self.conn:  # Use a single transaction, to ensure nothing modifies the db while we are reading
-            for table in itervalues(self.tables):
+            for table in self.tables.values():
                 try:
                     table.read(self)
-                except:
+                except Exception:
                     prints('Failed to read table:', table.name)
                     import pprint
                     pprint.pprint(table.metadata)
@@ -1699,7 +1719,7 @@ class DB:
     def remove_formats(self, remove_map, metadata_map):
         self.ensure_trash_dir()
         removed_map = {}
-        for book_id, removals in iteritems(remove_map):
+        for book_id, removals in remove_map.items():
             paths = set()
             removed_map[book_id] = set()
             for fmt, fname, path in removals:
@@ -1711,7 +1731,7 @@ class DB:
                 self.move_book_files_to_trash(book_id, paths, metadata_map[book_id])
         return removed_map
 
-    def cover_last_modified(self, path):
+    def cover_last_modified(self, path) -> datetime | None:
         path = os.path.abspath(os.path.join(self.library_path, path, COVER_FILE_NAME))
         try:
             return utcfromtimestamp(os.stat(path).st_mtime)
@@ -1721,40 +1741,39 @@ class DB:
     def copy_cover_to(self, path, dest, windows_atomic_move=None, use_hardlink=False, report_file_size=None):
         path = os.path.abspath(os.path.join(self.library_path, path, COVER_FILE_NAME))
         if windows_atomic_move is not None:
-            if not isinstance(dest, string_or_bytes):
+            if not isinstance(dest, (str, bytes)):
                 raise Exception('Error, you must pass the dest as a path when'
                         ' using windows_atomic_move')
             if os.access(path, os.R_OK) and dest and not samefile(dest, path):
                 windows_atomic_move.copy_path_to(path, dest)
                 return True
-        else:
-            if os.access(path, os.R_OK):
-                try:
-                    f = open(path, 'rb')
-                except OSError:
-                    if iswindows:
-                        time.sleep(0.2)
-                    f = open(path, 'rb')
-                with f:
-                    if hasattr(dest, 'write'):
-                        if report_file_size is not None:
-                            f.seek(0, os.SEEK_END)
-                            report_file_size(f.tell())
-                            f.seek(0)
-                        shutil.copyfileobj(f, dest)
-                        if hasattr(dest, 'flush'):
-                            dest.flush()
-                        return True
-                    elif dest and not samefile(dest, path):
-                        if use_hardlink:
-                            try:
-                                hardlink_file(path, dest)
-                                return True
-                            except:
-                                pass
-                        with open(dest, 'wb') as d:
-                            shutil.copyfileobj(f, d)
-                        return True
+        elif os.access(path, os.R_OK):
+            try:
+                f = open(path, 'rb')
+            except OSError:
+                if iswindows:
+                    time.sleep(0.2)
+                f = open(path, 'rb')
+            with f:
+                if hasattr(dest, 'write'):
+                    if report_file_size is not None:
+                        f.seek(0, os.SEEK_END)
+                        report_file_size(f.tell())
+                        f.seek(0)
+                    shutil.copyfileobj(f, dest)
+                    if hasattr(dest, 'flush'):
+                        dest.flush()
+                    return True
+                elif dest and not samefile(dest, path):
+                    if use_hardlink:
+                        try:
+                            hardlink_file(path, dest)
+                            return True
+                        except Exception:
+                            pass
+                    with open(dest, 'wb') as d:
+                        shutil.copyfileobj(f, d)
+                    return True
         return False
 
     def cover_or_cache(self, path, timestamp, as_what='bytes'):
@@ -1779,6 +1798,14 @@ class DB:
             else:
                 data = f.read()
         return True, data, stat.st_mtime
+
+    def cover_timestamp(self, path: str) -> float | None:
+        path = os.path.abspath(os.path.join(self.library_path, path, COVER_FILE_NAME))
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        return stat.st_mtime
 
     def compress_covers(self, path_map, jpeg_quality, progress_callback):
         cpath_map = {}
@@ -1814,18 +1841,17 @@ class DB:
                     if iswindows:
                         time.sleep(0.2)
                     os.remove(path)
+        elif no_processing:
+            with open(path, 'wb') as f:
+                f.write(data)
         else:
-            if no_processing:
-                with open(path, 'wb') as f:
-                    f.write(data)
-            else:
-                from calibre.utils.img import save_cover_data_to
-                try:
-                    save_cover_data_to(data, path)
-                except OSError:
-                    if iswindows:
-                        time.sleep(0.2)
-                    save_cover_data_to(data, path)
+            from calibre.utils.img import save_cover_data_to
+            try:
+                save_cover_data_to(data, path)
+            except OSError:
+                if iswindows:
+                    time.sleep(0.2)
+                save_cover_data_to(data, path)
 
     def copy_format_to(self, book_id, fmt, fname, path, dest,
                        windows_atomic_move=None, use_hardlink=False, report_file_size=None):
@@ -1833,7 +1859,7 @@ class DB:
         if path is None:
             return False
         if windows_atomic_move is not None:
-            if not isinstance(dest, string_or_bytes):
+            if not isinstance(dest, (str, bytes)):
                 raise Exception('Error, you must pass the dest as a path when'
                         ' using windows_atomic_move')
             if dest:
@@ -1842,37 +1868,35 @@ class DB:
                     try:
                         if path != dest:
                             os.rename(path, dest)
-                    except:
+                    except Exception:
                         pass  # Nothing too catastrophic happened, the cases mismatch, that's all
                 else:
                     windows_atomic_move.copy_path_to(path, dest)
-        else:
-            if hasattr(dest, 'write'):
-                with open(path, 'rb') as f:
-                    if report_file_size is not None:
-                        f.seek(0, os.SEEK_END)
-                        report_file_size(f.tell())
-                        f.seek(0)
-                    shutil.copyfileobj(f, dest)
-                if hasattr(dest, 'flush'):
-                    dest.flush()
-            elif dest:
-                if samefile(dest, path):
-                    if not self.is_case_sensitive and path != dest:
-                        # Ensure that the file has the same case as dest
-                        try:
-                            os.rename(path, dest)
-                        except OSError:
-                            pass  # Nothing too catastrophic happened, the cases mismatch, that's all
-                else:
-                    if use_hardlink:
-                        try:
-                            hardlink_file(path, dest)
-                            return True
-                        except:
-                            pass
-                    with open(path, 'rb') as f, open(make_long_path_useable(dest), 'wb') as d:
-                        shutil.copyfileobj(f, d)
+        elif hasattr(dest, 'write'):
+            with open(path, 'rb') as f:
+                if report_file_size is not None:
+                    f.seek(0, os.SEEK_END)
+                    report_file_size(f.tell())
+                    f.seek(0)
+                shutil.copyfileobj(f, dest)
+            if hasattr(dest, 'flush'):
+                dest.flush()
+        elif dest:
+            if samefile(dest, path):
+                if not self.is_case_sensitive and path != dest:
+                    # Ensure that the file has the same case as dest
+                    try:
+                        os.rename(path, dest)
+                    except OSError:
+                        pass  # Nothing too catastrophic happened, the cases mismatch, that's all
+            else:
+                if use_hardlink:
+                    try:
+                        hardlink_file(path, dest)
+                        return True
+                    except Exception:
+                        pass
+                shutil.copyfile(path, make_long_path_useable(dest))
         return True
 
     def windows_check_if_files_in_use(self, paths):
@@ -2208,7 +2232,7 @@ class DB:
         os.makedirs(os.path.join(tdir, 'b'), exist_ok=True)
         os.makedirs(os.path.join(tdir, 'f'), exist_ok=True)
         if iswindows:
-            import calibre_extensions.winutil as winutil
+            from calibre_extensions import winutil
             winutil.set_file_attributes(tdir, winutil.FILE_ATTRIBUTE_HIDDEN | winutil.FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
         if time.time() - self.last_expired_trash_at >= 3600:
             self.expire_old_trash(during_init=during_init)
@@ -2234,10 +2258,10 @@ class DB:
                     except OSError:
                         mtime = 0
                     if mtime + expire_age_in_seconds <= now or expire_age_in_seconds <= 0:
-                        removals.append(x.path)
+                        removals.append(make_long_path_useable(x.path))
         for x in removals:
             try:
-                rmtree_with_retry(x)
+                rmtree_with_retry(x)  # during init we dont want to slow down because of windows mandatory file locking
             except OSError:
                 if not during_init:
                     raise
@@ -2258,8 +2282,7 @@ class DB:
         for path in format_abspaths:
             ext = path.rpartition('.')[-1].lower()
             fmap[path] = os.path.join(dest, ext)
-        with open(os.path.join(dest, 'metadata.json'), 'wb') as f:
-            f.write(json.dumps(metadata).encode('utf-8'))
+        atomic_write(os.path.join(dest, 'metadata.json'), json.dumps(metadata).encode('utf-8'))
         copy_files(fmap, delete_source=True)
 
     def get_metadata_for_trash_book(self, book_id, read_annotations=True):
@@ -2372,7 +2395,7 @@ class DB:
         self.executemany(
             'INSERT OR REPLACE INTO books_plugin_data (book, name, val) VALUES (?, ?, ?)',
             [(book_id, name, json.dumps(val, default=to_json))
-                    for book_id, val in iteritems(val_map)])
+                    for book_id, val in val_map.items()])
 
     def get_custom_book_data(self, name, book_ids, default=None):
         book_ids = frozenset(book_ids)
@@ -2380,7 +2403,7 @@ class DB:
         def safe_load(val):
             try:
                 return json.loads(val, object_hook=from_json)
-            except:
+            except Exception:
                 return default
 
         if len(book_ids) == 1:
@@ -2634,12 +2657,12 @@ class DB:
 
     def set_conversion_options(self, options, fmt):
         def map_data(x):
-            if not isinstance(x, string_or_bytes):
-                x = native_string_type(x)
+            if not isinstance(x, (str, bytes)):
+                x = str(x)
             x = x.encode('utf-8') if isinstance(x, str) else x
             x = pickle_binary_string(x)
             return x
-        options = [(book_id, fmt.upper(), map_data(data)) for book_id, data in iteritems(options)]
+        options = [(book_id, fmt.upper(), map_data(data)) for book_id, data in options.items()]
         self.executemany('INSERT OR REPLACE INTO conversion_options(book,format,data) VALUES (?,?,?)', options)
 
     def get_top_level_move_items(self, all_paths):

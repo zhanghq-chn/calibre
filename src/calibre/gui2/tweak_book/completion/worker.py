@@ -6,13 +6,13 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 from collections import namedtuple
 from multiprocessing.connection import Pipe
+from queue import Queue
 from threading import Event, RLock, Thread
 
 from calibre.constants import iswindows
 from calibre.gui2.tweak_book.completion.basic import Request
 from calibre.gui2.tweak_book.completion.utils import DataError
 from calibre.utils.ipc import eintr_retry_call
-from polyglot.queue import Queue
 
 COMPLETION_REQUEST = 'completion request'
 CLEAR_REQUEST = 'clear request'
@@ -58,7 +58,7 @@ class CompletionWorker(Thread):
         conn = conn or self.control_conn
         try:
             eintr_retry_call(conn.send, data)
-        except:
+        except Exception:
             if not self.shutting_down:
                 raise
 
@@ -66,7 +66,7 @@ class CompletionWorker(Thread):
         conn = conn or self.control_conn
         try:
             return eintr_retry_call(conn.recv)
-        except:
+        except Exception:
             if not self.shutting_down:
                 raise
 

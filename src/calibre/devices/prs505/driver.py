@@ -132,7 +132,7 @@ class PRS505(USBMS):
                     if not os.path.exists(dname):
                         try:
                             os.makedirs(dname, mode=0o777)
-                        except:
+                        except Exception:
                             time.sleep(5)
                             os.makedirs(dname, mode=0o777)
                     with open(cachep, 'wb') as f:
@@ -142,7 +142,7 @@ class PRS505(USBMS):
                             ''')
                         fsync(f)
                 return True
-            except:
+            except Exception:
                 import traceback
                 traceback.print_exc()
             return False
@@ -237,7 +237,7 @@ class PRS505(USBMS):
                         self._upload_cover(os.path.dirname(p),
                                           os.path.splitext(os.path.basename(p))[0],
                                           book, p)
-                    except:
+                    except Exception:
                         debug_print('FAILED to upload cover',
                                 prefix, book.lpath)
         else:
@@ -266,7 +266,7 @@ class PRS505(USBMS):
         debug_print('PRS505: uploading cover')
         try:
             self._upload_cover(path, filename, metadata, filepath)
-        except:
+        except Exception:
             debug_print('FAILED to upload cover', filepath)
 
     def _upload_cover(self, path, filename, metadata, filepath):
@@ -277,21 +277,19 @@ class PRS505(USBMS):
             prefix = None
             if is_main:
                 prefix = self._main_prefix
-            else:
-                if self._card_a_prefix and \
-                    path.startswith(self._card_a_prefix):
-                    prefix = self._card_a_prefix
-                elif self._card_b_prefix and \
-                        path.startswith(self._card_b_prefix):
-                    prefix = self._card_b_prefix
+            elif self._card_a_prefix and \
+                path.startswith(self._card_a_prefix):
+                prefix = self._card_a_prefix
+            elif self._card_b_prefix and \
+                    path.startswith(self._card_b_prefix):
+                prefix = self._card_b_prefix
             if prefix is None:
                 prints('WARNING: Failed to find prefix for:', filepath)
                 return
             thumbnail_dir = os.path.join(prefix, *thumbnail_dir.split('/'))
 
             relpath = os.path.relpath(filepath, prefix)
-            if relpath.startswith('..\\'):
-                relpath = relpath[3:]
+            relpath = relpath.removeprefix('..\\')
             thumbnail_dir = os.path.join(thumbnail_dir, relpath)
             if not os.path.exists(thumbnail_dir):
                 os.makedirs(thumbnail_dir)

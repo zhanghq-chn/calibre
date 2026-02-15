@@ -36,9 +36,9 @@ class Template:
     def generate(self, *args, **kwargs):
         if 'style' not in kwargs:
             kwargs['style'] = ''
-        for key in kwargs.keys():
-            if isbytestring(kwargs[key]):
-                kwargs[key] = kwargs[key].decode('utf-8', 'replace')
+        for key, val in kwargs.items():
+            if isbytestring(val):
+                kwargs[key] = val.decode('utf-8', 'replace')
             if kwargs[key] is None:
                 kwargs[key] = ''
         args = list(args)
@@ -63,8 +63,8 @@ class Template:
 class EmbeddedContent(Template):
 
     def _generate(self, article, style=None, extra_css=None):
-        content = article.content if article.content else ''
-        summary = article.summary if article.summary else ''
+        content = article.content or ''
+        summary = article.summary or ''
         text = content if len(content) > len(summary) else summary
         head = HEAD(TITLE(article.title))
         if style:
@@ -162,7 +162,7 @@ class FeedTemplate(Template):
         body.append(div)
         if getattr(feed, 'image', None):
             div.append(DIV(IMG(
-                alt=feed.image_alt if feed.image_alt else '',
+                alt=feed.image_alt or '',
                 src=feed.image_url
                 ),
                 attrs('calibre_feed_image')))
@@ -225,7 +225,7 @@ class NavBarTemplate(Template):
             up = '../..' if art == number_of_articles_in_feed - 1 else '..'
             href = f'{prefix}{up}/{next_art}/index.html'
             navbar.text = '| '
-            navbar.append(A(_('Next'), href=href))
+            navbar.append(A(_('Next'), href=href, rel='articlenextlink'))
         href = f'{prefix}../index.html#article_{art}'
         next(navbar.iterchildren(reversed=True)).tail = ' | '
         navbar.append(A(_('Section menu'), href=href))
@@ -235,7 +235,7 @@ class NavBarTemplate(Template):
         if art > 0 and not bottom:
             href = f'{prefix}../article_{art - 1}/index.html'
             next(navbar.iterchildren(reversed=True)).tail = ' | '
-            navbar.append(A(_('Previous'), href=href))
+            navbar.append(A(_('Previous'), href=href, rel='articleprevlink'))
         next(navbar.iterchildren(reversed=True)).tail = ' | '
         if not bottom:
             navbar.append(HR())
@@ -347,7 +347,7 @@ class TouchscreenFeedTemplate(Template):
 
         if getattr(feed, 'image', None):
             div.append(DIV(IMG(
-                alt=feed.image_alt if feed.image_alt else '',
+                alt=feed.image_alt or '',
                 src=feed.image_url
                 ),
                 attrs('calibre_feed_image')))
@@ -402,7 +402,7 @@ class TouchscreenNavBarTemplate(Template):
             navbar.append(BR())
         # | Previous
         if art > 0:
-            link = A(attrs('article_link'),_('Previous'),href=f'{prefix}../article_{art - 1}/index.html')
+            link = A(attrs('article_link'),_('Previous'), rel='articleprevlink', href=f'{prefix}../article_{art - 1}/index.html')
             navbar_tr.append(TD(attrs('article_prev'),link))
         else:
             navbar_tr.append(TD(attrs('article_prev'),''))
@@ -419,7 +419,7 @@ class TouchscreenNavBarTemplate(Template):
                 else f'article_{art + 1}'
         up = '../..' if art == number_of_articles_in_feed - 1 else '..'
 
-        link = A(attrs('article_link'), _('Next'), href=f'{prefix}{up}/{next_art}/index.html')
+        link = A(attrs('article_link'), _('Next'), rel='articlenextlink', href=f'{prefix}{up}/{next_art}/index.html')
         navbar_tr.append(TD(attrs('article_next'),link))
         navbar_t.append(navbar_tr)
         navbar.append(navbar_t)

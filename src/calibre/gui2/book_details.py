@@ -7,6 +7,8 @@ import re
 from collections import namedtuple
 from contextlib import suppress
 from functools import lru_cache, partial
+from math import ceil
+from time import monotonic
 
 from qt.core import (
     QAction,
@@ -24,6 +26,7 @@ from qt.core import (
     QPalette,
     QPen,
     QPixmap,
+    QPoint,
     QPropertyAnimation,
     QRect,
     QSize,
@@ -38,7 +41,7 @@ from qt.core import (
 )
 
 from calibre import fit_image, sanitize_file_name
-from calibre.constants import config_dir, iswindows
+from calibre.constants import DEBUG, config_dir, ismacos, iswindows
 from calibre.db.constants import DATA_DIR_NAME, DATA_FILE_PATTERN, NO_SEARCH_LINK, RESOURCE_URL_SCHEME
 from calibre.ebooks import BOOK_EXTENSIONS
 from calibre.ebooks.metadata.book.base import Metadata, field_metadata
@@ -579,11 +582,13 @@ def add_item_specific_entries(menu, data, book_info, copy_menu, search_menu):
                 v = data.get('original_value') or data.get('value')
                 copy_menu.addAction(QIcon.ic('edit-copy.png'), _('The text: {}').format(v),
                                         lambda: QApplication.instance().clipboard().setText(v))
-            if field != 'size':
-                ac = book_info.remove_item_action
-                ac.data = (field, remove_value, book_id)
-                ac.setText(_('Remove %s from this book') % escape_for_menu(remove_name or data.get('original_value') or value))
-                menu.addAction(ac)
+            if field not in ('size', 'id', 'last_modified', 'sort', 'series_sort', 'uuid', 'author_sort', 'pages'):
+                fm = get_gui().current_db.new_api.field_metadata.get(field) or {}
+                if fm.get('datatype') != 'composite':
+                    ac = book_info.remove_item_action
+                    ac.data = (field, remove_value, book_id)
+                    ac.setText(_('Remove %s from this book') % escape_for_menu(remove_name or data.get('original_value') or value))
+                    menu.addAction(ac)
             # See if we need to add a click associated link menu line
             link_map = get_gui().current_db.new_api.get_all_link_maps_for_book(data.get('book_id', -1))
             link = link_map.get(field, {}).get(value)
@@ -672,7 +677,30 @@ def create_copy_links(menu, data=None):
 
 
 def details_context_menu_event(view, ev, book_info, add_popup_action=False, edit_metadata=None):
-    url = view.anchorAt(ev.pos())
+    if not (url := view.anchorAt(ev.pos())) and (dpr := ceil(view.devicePixelRatio())) > 1:
+        # Attempt to compensate for high density displays. When tabbing into an
+        # anchor (URL) Qt picks a point on the outer right edge for the
+        # position. Theory: on high-resolution displays, the outer right edge
+        # can be a few real pixels to the right of the bounding box for the
+        # anchor. As a result, Qt's chosen point isn't in the box. Compensate
+        # for that by moving the position slightly to the left and see if an
+        # anchor is found and, if so, use it. When back-tabbing into an anchor,
+        # Qt uses the left hand side of the bounding box, which isn't affected
+        # by high density. Note that this compensation could cause Qt to find
+        # an anchor when the user clicks in narrow empty space between anchors.
+        # I think this is ok because exact pixel mouse clicking is extremely
+        # difficult.
+        p = ev.pos()
+        p += QPoint(-dpr, 0)
+        url = view.anchorAt(p)
+        if DEBUG:
+            def pnt_to_str(p):
+                return f'{p.x()}, {p.y()}'
+            def rect_to_str(p):
+                return f'{p.x()}, {p.y()}, {p.width()}, {p.height()}'
+            print(f'BD ctxt menu pos. ev.pos: ({pnt_to_str(ev.pos())}), '
+                f'npos: ({pnt_to_str(p)}), cursor rect: ({rect_to_str(view.cursorRect())}), '
+                f'has url: {bool(url)}')
     menu = QMenu(view)
     copy_menu = menu.addMenu(QIcon.ic('edit-copy.png'), _('Copy'))
     copy_menu.addAction(QIcon.ic('edit-copy.png'), _('All book details'), partial(copy_all, view))
@@ -730,18 +758,19 @@ def details_context_menu_event(view, ev, book_info, add_popup_action=False, edit
     from calibre.gui2.ui import get_gui
     if add_popup_action:
         menu.addMenu(get_gui().iactions['Show Book Details'].qaction.menu())
-    else:
-        # We can't open edit metadata from a locked window because EM expects to
-        # be editing the current book, which this book probably isn't
-        if edit_metadata is not None:
-            ema = get_gui().iactions['Edit Metadata'].menuless_qaction
-            menu.addAction(_('Open the Edit metadata window') + '\t' + ema.shortcut().toString(QKeySequence.SequenceFormat.NativeText), edit_metadata)
+    # We can't open edit metadata from a locked window because EM expects to
+    # be editing the current book, which this book probably isn't
+    elif edit_metadata is not None:
+        ema = get_gui().iactions['Edit Metadata'].menuless_qaction
+        menu.addAction(_('Open the Edit metadata window') + '\t' + ema.shortcut().toString(QKeySequence.SequenceFormat.NativeText), edit_metadata)
+    menu.addSeparator()
+    book_id = get_gui().library_view.current_id
     if not reindex_fmt_added:
-        menu.addSeparator()
         menu.addAction(_(
-            'Re-index this book for full text searching'), partial(book_info.reindex_fmt, get_gui().library_view.current_id, '')).setIcon(
+            'Re-index this book for full text searching'), partial(book_info.reindex_fmt, book_id, '')).setIcon(
                 QIcon.ic('fts.png'))
-
+    menu.addAction(_('Re-count the pages in this book'), partial(book_info.recount_pages, book_id)).setIcon(
+            QIcon.ic('bookshelf.png'))
     if len(menu.actions()) > 0:
         menu.exec(ev.globalPos())
 # }}}
@@ -815,7 +844,7 @@ class CoverView(QWidget):  # {{{
         try:
             self.pwidth, self.pheight = fit_image(pwidth, pheight,
                             self.rect().width(), self.rect().height())[1:]
-        except:
+        except Exception:
             self.pwidth, self.pheight = self.rect().width()-1, \
                     self.rect().height()-1
         self.current_pixmap_size = QSize(self.pwidth, self.pheight)
@@ -842,13 +871,11 @@ class CoverView(QWidget):  # {{{
         canvas_size = self.rect()
         width = self.current_pixmap_size.width()
         extrax = canvas_size.width() - width
-        if extrax < 0:
-            extrax = 0
+        extrax = max(extrax, 0)
         x = int(extrax//2)
         height = self.current_pixmap_size.height()
         extray = canvas_size.height() - height
-        if extray < 0:
-            extray = 0
+        extray = max(extray, 0)
         y = int(extray//2)
         target = QRect(x, y, width, height)
         p = QPainter(self)
@@ -963,6 +990,8 @@ class CoverView(QWidget):  # {{{
             pmap = cb.pixmap()
             if pmap.isNull() and cb.supportsSelection():
                 pmap = cb.pixmap(QClipboard.Mode.Selection)
+            if ismacos:  # Without this there is a crash when Qt tries to save this pixmap as JPEG data
+                pmap = pmap.copy()
         if not pmap.isNull():
             self.update_cover(pmap)
 
@@ -1028,7 +1057,7 @@ class CoverView(QWidget):  # {{{
     def update_tooltip(self, current_path):
         try:
             sz = self.pixmap.size()
-        except:
+        except Exception:
             sz = QSize(0, 0)
         self.setToolTip(
             '<p>'+_('Double click to open the Book details window') +
@@ -1200,6 +1229,28 @@ class BookInfo(HTMLDisplay):
             db.reindex_fts_book(book_id, fmt)
         else:
             db.reindex_fts_book(book_id)
+
+    def recount_pages(self, book_id):
+        from calibre.gui2.ui import get_gui
+        db = get_gui().current_db.new_api
+        for fmt in db.formats(book_id) or ():
+            db.format_metadata(book_id, fmt, allow_cache=False, update_db=True)
+        db.queue_pages_scan(book_id)
+        QTimer.singleShot(100, partial(self.check_for_recount, monotonic(), db.library_id, book_id))
+
+    def check_for_recount(self, start_time: float, library_id: str, book_id: int) -> None:
+        from calibre.gui2.ui import get_gui
+        db = get_gui().current_db.new_api
+        if db.library_id != library_id or monotonic() - start_time > 10:
+            return
+        if db.pages_needs_scan((book_id,)):
+            QTimer.singleShot(100, partial(self.check_for_recount, start_time, db.library_id, book_id))
+            return
+        lv = get_gui().library_view
+        current_row = lv.currentIndex().row()
+        if lv.current_id != book_id:
+            current_row = -1
+        lv.model().refresh_ids((book_id,), current_row)
 # }}}
 
 
@@ -1275,7 +1326,7 @@ class DetailsLayout(QSplitter):  # {{{
         mh = min(int(r.height()//2), int(4/3 * r.width())+1)
         try:
             ph = self._children[0].pixmap.height()
-        except:
+        except Exception:
             ph = 0
         if ph > 0:
             mh = min(mh, ph)
@@ -1287,7 +1338,7 @@ class DetailsLayout(QSplitter):  # {{{
         mw = 1 + int(3/4 * r.height())
         try:
             pw = self._children[0].pixmap.width()
-        except:
+        except Exception:
             pw = 0
         if pw > 0:
             mw = min(mw, pw)
@@ -1542,6 +1593,10 @@ class BookDetails(DetailsLayout, DropMixin):  # {{{
         self.show_book_info.emit()
 
     def show_data(self, data):
+        from calibre.gui2.ui import get_gui
+
+        if getattr(data, 'book_display_info_is_from_device', False) and (gui := get_gui()) and gui.current_view is gui.library_view:
+            return
         try:
             self.last_data = {'title':data.title, 'authors':data.authors, 'book_id': getattr(data, 'id', None)}
         except Exception:

@@ -12,11 +12,12 @@ import os
 import re
 import sys
 from contextlib import suppress
+from urllib.parse import quote, urlparse
 
 from calibre import force_unicode, guess_type, prints, relpath
 from calibre.utils.config_base import tweaks
-from polyglot.builtins import as_unicode, iteritems
-from polyglot.urllib import quote, unquote, urlparse
+from polyglot.builtins import as_unicode
+from polyglot.urllib import unquote
 
 try:
     _author_pat = re.compile(tweaks['authors_split_regex'])
@@ -50,7 +51,7 @@ def remove_bracketed_text(src, brackets=None):
     total = 0
     buf = []
     src = force_unicode(src)
-    rmap = {v: k for k, v in iteritems(brackets)}
+    rmap = {v: k for k, v in brackets.items()}
     for char in src:
         if char in brackets:
             counts[char] += 1
@@ -97,7 +98,8 @@ def author_to_author_sort(
 
     author_use_surname_prefixes = tweaks['author_use_surname_prefixes'] if use_surname_prefixes is None else use_surname_prefixes
     if author_use_surname_prefixes:
-        author_surname_prefixes = frozenset(x.lower() for x in (tweaks['author_surname_prefixes'] if surname_prefixes is None else surname_prefixes))
+        author_surname_prefixes = frozenset(
+            force_unicode(x).lower() for x in (tweaks['author_surname_prefixes'] if surname_prefixes is None else surname_prefixes))
         if len(tokens) == 2 and tokens[0].lower() in author_surname_prefixes:
             return author
 
@@ -169,7 +171,7 @@ def get_title_sort_pat(lang=None):
         ans = f'^({ans})'
         try:
             ans = re.compile(ans, re.IGNORECASE)
-        except:
+        except Exception:
             ans = re.compile(r'^(A|The|An)\s+', re.IGNORECASE)
     else:
         ans = re.compile(r'^$')  # matches only the empty string
@@ -278,7 +280,7 @@ class Resource:
         self.fragment = ''
         try:
             self.mime_type = guess_type(href_or_path)[0]
-        except:
+        except Exception:
             self.mime_type = None
         if self.mime_type is None:
             self.mime_type = 'application/octet-stream'

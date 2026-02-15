@@ -17,7 +17,6 @@ from calibre.customize.conversion import DummyReporter
 from calibre.ebooks.metadata import format_isbn
 from calibre.library.catalogs import FIELDS, TEMPLATE_ALLOWED_FIELDS
 from calibre.utils.localization import _
-from polyglot.builtins import string_or_bytes
 
 
 class BIBTEX(CatalogPlugin):
@@ -168,6 +167,12 @@ class BIBTEX(CatalogPlugin):
                 if field == 'authors':
                     bibtex_entry.append(f'author = "{bibtexdict.bibtex_author_format(item)}"')
 
+                elif field == 'languages' and item:
+                    if isinstance(item, str):
+                        bibtex_entry.append(f'language = "{item}"')
+                    else:
+                        bibtex_entry.append(f'language = "{bibtexdict.bibtex_author_format(item)}"')
+
                 elif field == 'id':
                     bibtex_entry.append(f'calibreid = "{int(item)}"')
 
@@ -190,7 +195,7 @@ class BIBTEX(CatalogPlugin):
                     # html to text
                     try:
                         item = html2text(item)
-                    except:
+                    except Exception:
                         log.warn('Failed to convert comments to text')
                     bibtex_entry.append(f'note = "{bibtexdict.utf8ToBibtex(item)}"')
 
@@ -217,10 +222,10 @@ class BIBTEX(CatalogPlugin):
                     bibtex_entry.append(f'year = "{item.year}"')
                     bibtex_entry.append('month = "{}"'.format(bibtexdict.utf8ToBibtex(strftime('%b', item))))
 
-                elif field.startswith('#') and isinstance(item, string_or_bytes):
+                elif field.startswith('#') and isinstance(item, (str, bytes)):
                     bibtex_entry.append(f'custom_{field[1:]} = "{bibtexdict.utf8ToBibtex(item)}"')
 
-                elif isinstance(item, string_or_bytes):
+                elif isinstance(item, (str, bytes)):
                     # elif field in ['title', 'publisher', 'cover', 'uuid', 'ondevice',
                     # 'author_sort', 'series', 'title_sort'] :
                     bibtex_entry.append(f'{field} = "{bibtexdict.utf8ToBibtex(item)}"')
@@ -289,7 +294,7 @@ class BIBTEX(CatalogPlugin):
             bibfile_enc = bibfile_enc[opts.bibfile_enc]
             bibfile_enctag = bibfile_enctag[opts.bibfile_enctag]
             bib_entry = bib_entry[opts.bib_entry]
-        except:
+        except Exception:
             if opts.bibfile_enc in bibfile_enc:
                 bibfile_enc = opts.bibfile_enc
             else:
@@ -354,7 +359,7 @@ class BIBTEX(CatalogPlugin):
             bibtexc.ascii_bibtex = True
 
         # Check citation choice and go to default in case of bad CLI
-        if isinstance(opts.impcit, string_or_bytes):
+        if isinstance(opts.impcit, (str, bytes)):
             if opts.impcit == 'False':
                 citation_bibtex= False
             elif opts.impcit == 'True':
@@ -366,7 +371,7 @@ class BIBTEX(CatalogPlugin):
             citation_bibtex= opts.impcit
 
         # Check add file entry and go to default in case of bad CLI
-        if isinstance(opts.addfiles, string_or_bytes):
+        if isinstance(opts.addfiles, (str, bytes)):
             if opts.addfiles == 'False':
                 addfiles_bibtex = False
             elif opts.addfiles == 'True':
