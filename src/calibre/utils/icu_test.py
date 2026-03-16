@@ -107,6 +107,18 @@ class TestICU(unittest.TestCase):
         self.assertFalse(icu.startswith('xyz', 'a'))
         self.assertTrue(icu.startswith('xxx', ''))
         self.assertTrue(icu.primary_startswith('pena', 'peña'))
+        # test startswith with codepoint offset
+        c = icu.collator()
+        self.assertTrue(c.startswith('abcdef', 'cd', 2))
+        self.assertFalse(c.startswith('abcdef', 'cd', 3))
+        self.assertTrue(c.startswith('abcdef', '', 3))
+        self.assertFalse(c.startswith('abcdef', 'ab', 10))
+        self.assertTrue(c.startswith('abc', 'a', 0))
+        self.assertTrue(c.startswith('abc', '', 3))    # offset at end of string, empty prefix matches
+        self.assertFalse(c.startswith('abc', 'x', 3))  # offset at end of string, non-empty prefix fails
+        # offset counts codepoints, so emoji (2 UTF-16 units) counts as 1
+        self.assertTrue(c.startswith('x\U0001f431yz', 'y', 2))
+        self.assertFalse(c.startswith('x\U0001f431yz', 'y', 1))
         self.assertTrue(icu.contains('\U0001f431', '\U0001f431'))
         self.assertTrue(icu.contains('something', 'some other something else'))
         self.assertTrue(icu.contains('', 'a'))
@@ -213,6 +225,23 @@ class TestICU(unittest.TestCase):
         self.ae(split('-one -a-b-c-d- e'), ['-one', '-a-b-c-d-', 'e'])
         self.ae(split_into_words_and_positions('one \U0001f431 three'), [(0, 3), (6, 5)])
         self.ae(count_words('a b c d e f'), 6)
+        # Test iter_breaks() and iter_positions()
+        from calibre_extensions import icu as _icu
+        it = _icu.BreakIterator(_icu.UBRK_WORD, 'en')
+        it.set_text('one two three')
+        self.ae(list(it.iter_breaks()), [(0, 3), (4, 3), (8, 5)])
+        it.set_text('one two three')
+        self.ae(list(it.iter_positions()), [0, 4, 8])
+        # Test with hyphenated words
+        it.set_text('out-of-the-box')
+        self.ae(list(it.iter_breaks()), [(0, 14)])
+        it.set_text('out-of-the-box')
+        self.ae(list(it.iter_positions()), [0])
+        # Test with surrogate pairs (emoji)
+        it.set_text('one \U0001f431 three')
+        self.ae(list(it.iter_breaks()), [(0, 3), (6, 5)])
+        it.set_text('one \U0001f431 three')
+        self.ae(list(it.iter_positions()), [0, 6])
         for needle, haystack, pos in (
                 ('word', 'a word b', 2),
                 ('word', 'a word', 2),
@@ -246,6 +275,37 @@ class TestICU(unittest.TestCase):
         ):
             fpos = index_of(needle, haystack)
             self.ae(pos, fpos, f'Failed to find index of {needle!r} in {haystack!r} ({pos} != {fpos})')
+
+    def test_word_prefix_find(self):
+        ' Test the C implementation of word_prefix_find '
+        from calibre_extensions import icu as _icu
+        c = icu.primary_collator()
+        it = _icu.BreakIterator(_icu.UBRK_WORD, 'en')
+        wpf = _icu.word_prefix_find
+        # Basic prefix matches
+        self.ae(wpf(c, it, 'hello world', 'wo'), 6)
+        self.ae(wpf(c, it, 'hello world', 'he'), 0)
+        self.ae(wpf(c, it, 'hello world', 'world'), 6)
+        self.ae(wpf(c, it, 'hello world', 'hello'), 0)
+        self.ae(wpf(c, it, 'masi asim', 'asi'), 5)
+        self.ae(wpf(c, it, 'Asimov', 'asi'), 0)
+        # No match returns -1
+        self.ae(wpf(c, it, 'hello world', 'xyz'), -1)
+        # Case-insensitive match with primary collator
+        self.ae(wpf(c, it, 'Hello World', 'wo'), 6)
+        self.ae(wpf(c, it, 'Hello World', 'he'), 0)
+        # Accents ignored with primary collator
+        self.ae(wpf(c, it, 'peña mundo', 'pen'), 0)
+        # Empty prefix matches first word
+        self.ae(wpf(c, it, 'hello world', ''), 0)
+        # Empty string returns -1
+        self.ae(wpf(c, it, '', 'x'), -1)
+        self.ae(wpf(c, it, '', ''), -1)
+        # Surrogate pairs: emoji counts as 1 codepoint
+        self.ae(wpf(c, it, '\U0001f431 world', 'wo'), 2)
+        # Multiple calls reuse the iterator
+        self.ae(wpf(c, it, 'one two three', 'tw'), 4)
+        self.ae(wpf(c, it, 'one two three', 'th'), 8)
 
     def test_remove_accents(self):
         for func in (icu.remove_accents_icu, icu.remove_accents_regex):
