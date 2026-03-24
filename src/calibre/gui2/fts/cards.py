@@ -359,6 +359,7 @@ class VirtualCardContainer(QWidget):
         self.cover_render_queue.shutdown(True)
         self.cover_render_queue = Queue()
         self.generation += 1
+        self._clear_live_widgets()
         self.change_panel.emit(0 if num < 0 else 1)
         Thread(daemon=True, name='FTSCoverRender', target=self.render_covers, args=(
             self.cover_render_queue, self.devicePixelRatioF(), layout(), default_cover,
@@ -509,7 +510,7 @@ class VirtualCardContainer(QWidget):
         needed: set[int] = set()
         for r in range(first_row, last_row):
             ri = self._rows[r]
-            for idx in range(ri.first_index, ri.first_index + ri.card_count):
+            for idx in range(ri.first_index, min(ri.first_index + ri.card_count, len(self._cards))):
                 needed.add(idx)
 
         # Recycle widgets that are no longer needed
@@ -535,8 +536,11 @@ class VirtualCardContainer(QWidget):
             else:
                 w = self._create_card_widget()
             if not card.cover_requested:
-                self.cover_render_queue.put((card.results.book_id, idx))
-                card.cover_requested = True
+                try:
+                    self.cover_render_queue.put((card.results.book_id, idx))
+                    card.cover_requested = True
+                except ShutDown:
+                    pass
             w.bind(card)
             w.setGeometry(card.x, card.y, card.width, card.height)
             w.show()
@@ -562,6 +566,7 @@ class CardView(QScrollArea):
         self._container.change_panel.connect(self.change_panel)
         self.setWidget(self._container)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
+        model.search_started.connect(self.scroll_to_top)
         # Debounce resize relayout
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)
@@ -585,6 +590,9 @@ class CardView(QScrollArea):
         self._container.set_viewport(self._viewport_rect())
         self._container._full_relayout()
         self.update()
+
+    def scroll_to_top(self):
+        self.verticalScrollBar().setValue(0)
 
     def showEvent(self, event):
         super().showEvent(event)
