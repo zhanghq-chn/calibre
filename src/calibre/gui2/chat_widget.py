@@ -203,13 +203,9 @@ class ChatWidget(QWidget):
         bg = self.response_color if is_response else self.base_color
         self.blocks.append(self.wrap_content_in_padding_table(html, bg))
 
-    def replace_last_block(self, body_html: str, header: Header = Header(), is_response: bool = False) -> None:
-        if self.blocks:
-            del self.blocks[-1]
-        self.add_block(body_html, header, is_response)
-
-    def show_message(self, msg_html: str, details: str = '', level: int = INFO) -> None:
-        self.blocks = []
+    def show_message(self, msg_html: str, details: str = '', level: int = INFO, clear_conversation: bool = True) -> None:
+        if clear_conversation:
+            self.blocks = []
         style = ''
         if level == WARN:
             style += 'color: orange;'

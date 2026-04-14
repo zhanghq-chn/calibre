@@ -89,10 +89,11 @@
     },
 
     {
-        "name": "xz 5.8.1",
-        "os": "macos,linux",
+        "name": "xz 5.8.3",
+		"os": "macos,linux",
         "unix": {
-            "hash": "sha256:507825b599356c10dca1cd720c9d0d0c9d5400b9de300af00e4d1ea150795543",
+            "file_extension": "tar.gz",
+            "hash": "sha256:3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0",
             "urls": ["https://tukaani.org/xz/{filename}"]
         }
     },
@@ -167,9 +168,10 @@
     },
 
     {
-        "name": "openssl 3.5.5",
+        "name": "openssl 3.5.6",
         "unix": {
-            "hash": "sha256:b28c91532a8b65a1f983b4c28b7488174e4a01008e29ce8e69bd789f28bc2a89",
+            "file_extension": "tar.gz",
+            "hash": "sha256:deae7c80cba99c4b4f940ecadb3c3338b13cb77418409238e57d7f31f2a3b736",
             "urls": ["https://www.openssl.org/source/{filename}"]
         }
     },
@@ -242,10 +244,10 @@
     },
 
     {
-        "name": "libpng 1.6.55",
+        "name": "libpng 1.6.57",
         "unix": {
             "file_extension": "tar.xz",
-            "hash": "sha256:d925722864837ad5ae2a82070d4b2e0603dc72af44bd457c3962298258b8e82d",
+            "hash": "sha256:d10c20d7171569804cae8dfc13ba6dcd0662c41ed39d43d4d429314aafb10a80",
             "urls": ["https://downloads.sourceforge.net/sourceforge/libpng/{filename}"]
         }
     },

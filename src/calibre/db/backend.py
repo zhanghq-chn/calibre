@@ -1248,8 +1248,11 @@ class DB:
             self.execute('UPDATE custom_columns SET name=? WHERE id=?', (name, num))
             changed = True
         if label is not None:
+            old_label = self.custom_column_num_to_label_map.get(num)
             self.execute('UPDATE custom_columns SET label=? WHERE id=?', (label, num))
             changed = True
+            if old_label is not None and old_label != label:
+                self.notes.rename_field(self.conn, '#' + old_label, '#' + label)
         if is_editable is not None:
             self.execute('UPDATE custom_columns SET editable=? WHERE id=?', (bool(is_editable), num))
             self.custom_column_num_map[num]['is_editable'] = bool(is_editable)
@@ -1422,6 +1425,7 @@ class DB:
     def delete_custom_column(self, label=None, num=None):
         data = self.custom_field_metadata(label, num)
         self.execute('UPDATE custom_columns SET mark_for_delete=1 WHERE id=?', (data['num'],))
+        self.notes.delete_field(self.conn, '#' + data['label'])
 
     def close(self, force=True, unload_formatter_functions=True):
         if getattr(self, '_conn', None) is not None:
@@ -1658,7 +1662,7 @@ class DB:
             return
         with candidates:
             for x in candidates:
-                if x.name.endswith(q) and x.is_file():
+                if x.name.endswith(q) and x.is_file() and not x.name.startswith('._'):
                     if not do_file_rename:
                         return x.path
                     x = x.path
@@ -2462,7 +2466,7 @@ class DB:
 
     def search_annotations(self,
         fts_engine_query, use_stemming, highlight_start, highlight_end, snippet_size, annotation_type,
-        restrict_to_book_ids, restrict_to_user, ignore_removed=False
+        restrict_to_book_ids, restrict_to_user, ignore_removed=False, annotation_style=None,
     ):
         fts_engine_query = unicode_normalize(fts_engine_query)
         fts_table = 'annotations_fts_stemmed' if use_stemming else 'annotations_fts'
@@ -2488,6 +2492,8 @@ class DB:
             data.append(annotation_type)
         query += f' ORDER BY {fts_table}.rank '
         ls = json.loads
+        query_style = None if annotation_style is None else tuple(annotation_style.items())
+        sentinel = object()
         try:
             for (rowid, book_id, fmt, user_type, user, annot_data, text) in self.execute(query, tuple(data)):
                 if restrict_to_book_ids is not None and book_id not in restrict_to_book_ids:
@@ -2497,6 +2503,9 @@ class DB:
                 except Exception:
                     continue
                 if ignore_removed and parsed_annot.get('removed'):
+                    continue
+                if query_style is not None and ((s := parsed_annot.get('style')) is None
+                        or not all(s.get(k, sentinel) == v for k, v in query_style)):
                     continue
                 yield {
                     'id': rowid,
